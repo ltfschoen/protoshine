@@ -1,3 +1,3 @@
 # moloch
 
-I summon thee.
+I summon thee. Rise!
