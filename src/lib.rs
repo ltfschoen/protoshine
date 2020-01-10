@@ -17,202 +17,94 @@ use sp_runtime::{Percent, ModuleId, RuntimeDebug,
 use frame_support::{decl_error, decl_module, decl_storage, decl_event, ensure, dispatch::DispatchResult};
 use frame_support::weights::SimpleDispatchInfo;
 use frame_support::traits::{
-	Currency, ReservableCurrency, Randomness, Get, ChangeMembers,
-	ExistenceRequirement::{KeepAlive, AllowDeath},
+	ReservableCurrency, Get, ChangeMembers,
 };
 use frame_system::{self as system, ensure_signed, ensure_root};
 
+type Shares<T, I> = <<T as Trait<I>>::Signal as Signal<<T as system::Trait>::AccountId>>::Shares;
 type BalanceOf<T, I> = <<T as Trait<I>>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
 
-const MODULE_ID: ModuleId = ModuleId(*b"4moloch5");
+const MODULE_ID: ModuleId = ModuleId(*b"mololoch");
 
-/// The module's configuration trait.
+/// The module's configuration trait
 pub trait Trait<I=DefaultInstance>: system::Trait {
 	/// The overarching event type.
 	type Event: From<Event<Self, I>> + Into<<Self as system::Trait>::Event>;
 
-	/// The collateral type used for backing `Shares`
-    type Currency: ReservableCurrency<Self::AccountId>;
+    /// The type that corresponds to native signal
+    type Signal: Signal<Self::AccountId>;
+
+    /// The type that corresponds to some outside currency
+    type Currency: Currency<Self::AccountId>;
+
+    /// The native value standard, corresponding to collateral (TODO: make own)
+    type Collateral: ReservableCurrency<Self::AccountId>;
+
+    /// The receiver of the signal for when the members have changed
+    /// TODO: this is the hook for which signal's issuance should be triggered
+    type MembershipChanged: ChangeMembers<Self::AccountId>;
     
-    ///
-    type Power: Power<Self::AccountId>;
-
-	/// Something that provides randomness in the runtime.
-	type Randomness: Randomness<Self::Hash>;
-
-	/// The minimum amount of a deposit required for a bid to be made.
-	type CandidateDeposit: Get<BalanceOf<Self, I>>;
-
-	/// The amount of the unpaid reward that gets deducted in the case that either a skeptic
-	/// doesn't vote or someone votes in the wrong way.
-	type WrongSideDeduction: Get<BalanceOf<Self, I>>;
-
-	/// The number of times a member may vote the wrong way (or not at all, when they are a skeptic)
-	/// before they become suspended.
-	type MaxStrikes: Get<u32>;
-
-	/// The amount of incentive paid within each period. Doesn't include VoterTip.
-	type PeriodSpend: Get<BalanceOf<Self, I>>;
-
-	/// The receiver of the signal for when the members have changed.
-	type MembershipChanged: ChangeMembers<Self::AccountId>;
-
-	/// The number of blocks between candidate/membership rotation periods.
-	type RotationPeriod: Get<Self::BlockNumber>;
-
-	/// The maximum duration of the payout lock.
-	type MaxLockDuration: Get<Self::BlockNumber>;
+    // TODO: add membership origin(s)
 
 	/// The origin that is allowed to call `found`.
 	type FounderOrigin: EnsureOrigin<Self::Origin>;
-
-	/// The origin that is allowed to make suspension judgements.
-	type SuspensionJudgementOrigin: EnsureOrigin<Self::Origin>;
-
-	/// The number of blocks between membership challenges.
-	type ChallengePeriod: Get<Self::BlockNumber>;
 }
 
-/// A vote by a member on a candidate application.
+/// An application to join the membership
 #[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug)]
-pub enum Vote {
-	/// The member has been chosen to be skeptic and has not yet taken any action.
-	Skeptic,
-	/// The member has rejected the candidate's application.
-	Reject,
-	/// The member approves of the candidate's application.
-	Approve,
-}
-
-/// A judgement by the suspension judgement origin on a suspended candidate.
-#[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug)]
-pub enum Judgement {
-	/// The suspension judgement origin takes no direct judgment
-	/// and places the candidate back into the bid pool.
-	Rebid,
-	/// The suspension judgement origin has rejected the candidate's application.
-	Reject,
-	/// The suspension judgement origin approves of the candidate's application.
-	Approve,
-}
-
-/// Details of a payout given as a per-block linear "trickle".
-#[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug, Default)]
-pub struct Payout<Balance, BlockNumber> {
-	/// Total value of the payout.
-	value: Balance,
-	/// Block number at which the payout begins.
-	begin: BlockNumber,
-	/// Total number of blocks over which the payout is spread.
-	duration: BlockNumber,
-	/// Total value paid out so far.
-	paid: Balance,
-}
-
-/// Status of a vouching member.
-#[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug)]
-pub enum VouchingStatus {
-	/// Member is currently vouching for a user.
-	Vouching,
-	/// Member is banned from vouching for other members.
-	Banned,
-}
-
-/// Number of strikes that a member has against them.
-pub type StrikeCount = u32;
-
-/// A bid for entry into society.
-#[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug,)]
-pub struct Bid<AccountId, Balance> {
-	/// The bidder/candidate trying to enter society
+pub struct MemberApplication<AccountId, Currency, Shares> {
+	/// The applicant
 	who: AccountId,
-	/// The kind of bid placed for this bidder/candidate. See `BidKind`.
-	kind: BidKind<AccountId, Balance>,
-	/// The reward that the bidder has requested for successfully joining the society.
-	value: Balance,
+    /// The collateral promised and slowly staked over the duration of the proposal process
+    /// TODO: make issue for why this should be made more complex eventually s.t. amount staked only is applied once approved and reserved changes based on prob(passage)
+    collateral: Currency,
+    /// The reward that the bidder has requested for successfully joining the society.
+    shares_requested: Shares,
 }
 
-/// A vote by a member on a candidate application.
 #[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug)]
-pub enum BidKind<AccountId, Balance> {
-	/// The CandidateDeposit was paid for this bid.
-	Deposit(Balance),
-	/// A member vouched for this bid. The account should be reinstated into `Members` once the
-	/// bid is successful (or if it is rescinded prior to launch).
-	Vouch(AccountId, Balance),
-}
-
-impl<AccountId: PartialEq, Balance> BidKind<AccountId, Balance> {
-	fn check_voucher(&self, v: &AccountId) -> DispatchResult {
-		if let BidKind::Vouch(ref a, _) = self {
-			if a == v {
-				Ok(())
-			} else {
-				Err("incorrect identity")?
-			}
-		} else {
-			Err("not vouched")?
-		}
-	}
+pub struct GrantApplication<AccountId, Currency, BlockNumber> {
+    /// Identifier for this grant application
+    /// - just a nonce for now
+    id: u32,
+    /// The recipient group
+    /// - replace this with a `GroupIdentifier`
+    /// - map the `GroupIdentifier` to a new origin generated when this proposal is passed and manages this group's decisions
+    who: Vec<AccountId>,
+    /// Schedule for payouts
+    /// - instead of encoding it like this, it should be encoded as a polynomial...this data structure costs more the longer the proposed duration
+    /// - see `VestingSchedule` and staking/inflation curve
+    schedule: Vec<(BlockNumber, Currency)>,
 }
 
 // This module's storage items.
 decl_storage! {
-	trait Store for Module<T: Trait<I>, I: Instance=DefaultInstance> as Society {
+	trait Store for Module<T: Trait<I>, I: Instance=DefaultInstance> as Moloch {
 		/// The current set of candidates; bidders that are attempting to become members.
 		pub Candidates get(candidates): Vec<Bid<T::AccountId, BalanceOf<T, I>>>;
 
-		/// The set of suspended candidates.
-		pub SuspendedCandidates get(suspended_candidate):
-			map T::AccountId => Option<(BalanceOf<T, I>, BidKind<T::AccountId, BalanceOf<T, I>>)>;
+		/// Upper bound on how much from the treasury can be spent every round (TODO: define round length)
+		pub Budget get(fn budget) config(): BalanceOf<T, I>;
 
-		/// Amount of our account balance that is specifically for the next round's bid(s).
-		pub Pot get(fn pot) config(): BalanceOf<T, I>;
+		/// The current set of members
+		pub Members get(fn members): Vec<(T::AccountId, T::Shares)>;
+        
+        /// The current membership applications
+        MemberApplications: Vec<MemberApplication<T::AccountId, BalanceOf<T, I>, T::BlockNumber>>;
 
-		/// The most primary from the most recently approved members.
-		pub Head get(head) build(|config: &GenesisConfig<T, I>| config.members.first().cloned()):
-			Option<T::AccountId>;
-
-		/// The current set of members, ordered.
-		pub Members get(fn members) build(|config: &GenesisConfig<T, I>| {
-			let mut m = config.members.clone();
-			m.sort();
-			m
-		}): Vec<T::AccountId>;
-
-		/// The set of suspended members.
-		pub SuspendedMembers get(fn suspended_member): map T::AccountId => Option<()>;
-
-		/// The current bids, stored ordered by the value of the bid.
-		Bids: Vec<Bid<T::AccountId, BalanceOf<T, I>>>;
-
-		/// Members currently vouching or banned from vouching again
-		Vouching get(fn vouching): map T::AccountId => Option<VouchingStatus>;
+		/// The current grant applications
+		GrantApplications: Vec<GrantApplication<T::AccountId, BalanceOf<T, I>, T::BlockNumber>>;
 
 		/// Pending payouts; ordered by block number, with the amount that should be paid out.
 		Payouts: map T::AccountId => Vec<(T::BlockNumber, BalanceOf<T, I>)>;
-
-		/// The ongoing number of losing votes cast by the member.
-		Strikes: map T::AccountId => StrikeCount;
-
-		/// Double map from Candidate -> Voter -> (Maybe) Vote.
-		Votes: double_map
-			hasher(twox_64_concat) T::AccountId,
-			twox_64_concat(T::AccountId)
-		=> Option<Vote>;
-
-		/// The defending member currently being challenged.
-		Defender get(fn defender): Option<T::AccountId>;
-		
-		/// Votes for the defender.
-		DefenderVotes: map hasher(twox_64_concat) T::AccountId => Option<Vote>;
-
-		/// The max number of members for the society at one time.
-		MaxMembers get(fn max_members) config(): u32;
-	}
-	add_extra_genesis {
-		config(members): Vec<T::AccountId>;
-	}
+        
+        /// Nonce (for grant application)
+        Nonce: u32;
+    }
+    // TODO: add back later and configure members storage item above
+	// add_extra_genesis {
+	// 	config(members): Vec<(T::AccountId, T::Shares)>;
+	// }
 }
 
 // The module's dispatchable functions.

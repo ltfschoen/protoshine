@@ -1,41 +1,34 @@
+use frame_support::traits::ReservableCurrency;
+use sp_runtime::traits::{MaybeSerializeDeserialize, SimpleArithmetic};
+use sp_std::fmt::Debug;
+use codec::FullCodec;
 
-// define a share type which is similar to currency but which has the desired features
-// - should be documentation on the undefined behavior of wrapping for Shares `=>` at some point, it should start storing a tuple
-// (u64, u64) and continue extending this data structure for as large as the number gets
-// - 
-pub trait Power<AccountId> {
+
+/// Signal is used by members to influence collective action. It can be used to
+/// - sponsor proposals (from themselves or for outside applications)
+/// - propose edits to proposals in screening
+/// - vote on proposals
+/// - 
+pub trait Signal<AccountId> {
     /// The equivalent of the `Balances` type
     type Shares: SimpleArithmetic + FullCodec + Copy + MaybeSerializeDeserialize + Debug + Default;
 
-    /// The collateral backing this `Power`
-    /// TODO: more generic type than `Lockable` here, but impl for `LockableCurrency` and `ReservableCurrency` or other asset types
-    /// - in the future, I want this parameter to governable by some origin (like mcd)
-    type Collateral: LockableCurrency<Self::AccountId>;
-
     /// The total number of shares controlled by `who`
-    fn total_shares(who: &AccountId) -> Self::Shares;
+    fn total_shares(who: &AccountId) -> (Self::Shares, Self::Collateral);
     
     /// The total number of (`Shares`, Collateral) in circulation
     fn total_issuance() -> (Self::Shares, Self::Collateral);
+
+    /// Increase issuance when membership approved
+    /// - add a runtime hook for when membership is approved and place this logic therein
+    /// - this fails if the value overflows
+    fn issue(amount: Shares) -> bool;
+
+    /// Decrease issuance when shares burned
+    /// - add a runtime hook for when membership is approved and place this logic therein
+    /// - this cannot fail, but it should be zero-bounded if it isn't already
+    fn burn(amount: Shares);
 }
-
-/// another one
-pub trait BurnablePower<AccountId>: Power<AccountId> {
-    /// the order in which dilution occurs upon mass exit (from lowest to highest)
-    /// - should make this 
-    type DilutionTicket: SimpleArithmetic + FullCodec + Copy + MaybeSerializeDeserialize + Debug + Default;
-
-    fn request_burn(amount: Self::Shares) -> Self::DilutionTicket;
-}
-
-///
-pub trait RehypothecatedPower<AccountId>: Power<AccountId> {
-    // I want to be able to reserve it for an unlimited number of actions but check which actions it's reserved for each time
-
-    // so I want to define a class of methods
-}
-
-
 
 // in the module, shares are used for 
 // - sponsoring proposals
