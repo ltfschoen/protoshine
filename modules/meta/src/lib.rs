@@ -12,6 +12,8 @@
 //! eventually, add process for joining/leaving based on some criteria and an inner vote (instance `membership`)
 //!
 //! eventually, instance voting module for voting instead of the current organization which duplicates logic
+//!
+//! add option for automatic voting based on parameterization preferences
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit="128"]
 
