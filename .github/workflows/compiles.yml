@@ -20,7 +20,7 @@ jobs:
         components: rustfmt
         target: wasm32-unknown-unknown
         default: true 
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v1
       with:
         submodules: recursive
     - name: Compile Modules
