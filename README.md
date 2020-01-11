@@ -1,5 +1,3 @@
 # moloch
 
-I summon thee. Rise!
-
-* signal
+I summon thee
