@@ -21,9 +21,8 @@ use sp_runtime::{
 };
 use sp_std::prelude::*;
 
-type Shares<T, I> = <<T as Trait<I>>::Signal as Signal<<T as system::Trait>::AccountId>>::Shares;
-type BalanceOf<T, I> =
-    <<T as Trait<I>>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
+pub type Shares<T, I> = <<T as Trait<I>>::Signal as Signal<<T as system::Trait>::AccountId>>::Shares;
+type BalanceOf<T, I> = <<T as Trait<I>>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
 
 const MODULE_ID: ModuleId = ModuleId(*b"mololoch");
 
@@ -205,12 +204,8 @@ impl<T: Trait<I>, I: Instance> Module<T, I> {
 pub struct EnsureFounder<AccountId, Shares, I = DefaultInstance>(
     sp_std::marker::PhantomData<(AccountId, Shares, I)>,
 );
-impl<
-        O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>,
-        AccountId,
-        Shares,
-        I,
-    > EnsureOrigin<O> for EnsureFounder<AccountId, Shares, I>
+
+impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, AccountId, Shares, I> EnsureOrigin<O> for EnsureFounder<AccountId, Shares, I>
 {
     type Success = (AccountId, Shares);
     fn try_origin(o: O) -> Result<Self::Success, O> {
@@ -226,12 +221,8 @@ impl<
 pub struct EnsureFounders<AccountId, Shares, I = DefaultInstance>(
     sp_std::marker::PhantomData<(AccountId, Shares, I)>,
 );
-impl<
-        O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>,
-        AccountId,
-        Shares,
-        I,
-    > EnsureOrigin<O> for EnsureFounders<AccountId, Shares, I>
+
+impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, AccountId, Shares, I> EnsureOrigin<O> for EnsureFounders<AccountId, Shares, I>
 {
     type Success = Vec<(AccountId, Shares)>;
     fn try_origin(o: O) -> Result<Self::Success, O> {
@@ -244,45 +235,35 @@ impl<
     }
 }
 
-/// Measures proportion of share weight passed in through the origin
-pub struct EnsureShareWeightMoreThan<N: U32, D: U32, Shares, I = DefaultInstance>(
-    sp_std::marker::PhantomData<(N, D, Shares, I)>,
-);
-impl<
-        O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>,
-        N: U32,
-        D: U32,
-        Shares,
-        I,
-    > EnsureOrigin<O> for EnsureShareWeightMoreThan<N, D, Shares, I>
-{
-    type Success = ();
-    fn try_origin(o: O) -> Result<Self::Success, O> {
-        o.into().and_then(|o| match o {
-            RawOrigin::ShareWeighted(n, m) if n * D::VALUE > N::VALUE * m => Ok(()),
-            r => Err(O::from(r)),
-        })
-    }
-}
+// // Measures proportion of share weight passed in through the origin
+// pub struct EnsureShareWeightMoreThan<N: U32, D: U32, Shares, I = DefaultInstance>(
+//     sp_std::marker::PhantomData<(N, D, Shares, I)>,
+// );
 
-pub struct EnsureShareWeighAtLeast<N: U32, D: U32, Shares, I = DefaultInstance>(
-    sp_std::marker::PhantomData<(N, D, Shares, I)>,
-);
-impl<
-        O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>,
-        N: U32,
-        D: U32,
-        Shares,
-        I,
-    > EnsureOrigin<O> for EnsureShareWeightAtLeast<N, D, Shares, I>
-{
-    type Success = ();
-    fn try_origin(o: O) -> Result<Self::Success, O> {
-        o.into().and_then(|o| match o {
-            RawOrigin::ShareWeighted(n, m) if n * D::VALUE >= N::VALUE * m => Ok(()),
-            r => Err(O::from(r)),
-        })
-    }
-}
+// impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, N: U32, D: U32, Shares, I> EnsureOrigin<O> for EnsureShareWeightMoreThan<N, D, Shares, I>
+// {
+//     type Success = ();
+//     fn try_origin(o: O) -> Result<Self::Success, O> {
+//         o.into().and_then(|o| match o {
+//             RawOrigin::ShareWeighted(n, m) if n * D::VALUE > N::VALUE * m => Ok(()),
+//             r => Err(O::from(r)),
+//         })
+//     }
+// }
+
+// pub struct EnsureShareWeighAtLeast<N: U32, D: U32, Shares, I = DefaultInstance>(
+//     sp_std::marker::PhantomData<(N, D, Shares, I)>,
+// );
+
+// impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, N: U32, D: U32, Shares, I> EnsureOrigin<O> for EnsureShareWeightAtLeast<N, D, Shares, I>
+// {
+//     type Success = ();
+//     fn try_origin(o: O) -> Result<Self::Success, O> {
+//         o.into().and_then(|o| match o {
+//             RawOrigin::ShareWeighted(n, m) if n * D::VALUE >= N::VALUE * m => Ok(()),
+//             r => Err(O::from(r)),
+//         })
+//     }
+// }
 
 // todo: tests in another file
