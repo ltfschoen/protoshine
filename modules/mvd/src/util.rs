@@ -1,18 +1,17 @@
+use codec::FullCodec;
 use frame_support::traits::ReservableCurrency;
 use sp_runtime::traits::{MaybeSerializeDeserialize, SimpleArithmetic};
 use sp_std::fmt::Debug;
-use codec::FullCodec;
-
 
 /// Signal is used by members to influence collective action. It can be used to
 /// - sponsor proposals (from themselves or for outside applications)
 /// - propose edits to proposals in screening
 /// - vote on proposals
-/// - 
+/// -
 pub trait Signal<AccountId> {
     /// The equivalent of the `Balances` type
     type Shares: SimpleArithmetic + FullCodec + Copy + MaybeSerializeDeserialize + Debug + Default;
-    
+
     /// The total number of shares in circulation
     fn total_issuance() -> Self::Shares;
 
@@ -28,7 +27,7 @@ pub trait Signal<AccountId> {
 }
 // could have collateral as an associated type but not for minimal version
 
-// in the module, shares are used for 
+// in the module, shares are used for
 // - sponsoring proposals
 // - voting on proposals
 // - voting on rules, targets (meta)
