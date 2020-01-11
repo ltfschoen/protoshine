@@ -12,23 +12,21 @@ use codec::FullCodec;
 pub trait Signal<AccountId> {
     /// The equivalent of the `Balances` type
     type Shares: SimpleArithmetic + FullCodec + Copy + MaybeSerializeDeserialize + Debug + Default;
-
-    /// The total number of shares controlled by `who`
-    fn total_shares(who: &AccountId) -> (Self::Shares, Self::Collateral);
     
-    /// The total number of (`Shares`, Collateral) in circulation
-    fn total_issuance() -> (Self::Shares, Self::Collateral);
+    /// The total number of shares in circulation
+    fn total_issuance() -> Self::Shares;
 
     /// Increase issuance when membership approved
     /// - add a runtime hook for when membership is approved and place this logic therein
     /// - this fails if the value overflows
-    fn issue(amount: Shares) -> bool;
+    fn issue(amount: Self::Shares) -> bool;
 
     /// Decrease issuance when shares burned
     /// - add a runtime hook for when membership is approved and place this logic therein
     /// - this cannot fail, but it should be zero-bounded if it isn't already
-    fn burn(amount: Shares);
+    fn burn(amount: Self::Shares);
 }
+// could have collateral as an associated type but not for minimal version
 
 // in the module, shares are used for 
 // - sponsoring proposals
