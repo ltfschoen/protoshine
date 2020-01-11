@@ -8,7 +8,7 @@ use util::Signal;
 use rand_chacha::{rand_core::{RngCore, SeedableRng}, ChaChaRng};
 use sp_std::prelude::*;
 use codec::{Encode, Decode};
-use sp_runtime::{Percent, ModuleId, RuntimeDebug,
+use sp_runtime::{Percent, Permill, ModuleId, RuntimeDebug,
 	traits::{
 		StaticLookup, AccountIdConversion, Saturating, Zero, IntegerSquareRoot,
 		TrailingZeroInput, CheckedSub, EnsureOrigin
@@ -54,6 +54,9 @@ pub struct GrantApplication<AccountId, Currency, BlockNumber> {
 
 /// The module's configuration trait
 pub trait Trait<I=DefaultInstance>: system::Trait {
+	/// This module's raw origin (membership's origin for now)
+	type Origin: From<RawOrigin<Self::AccountId, <Self as Trait<I>>::Signal, I>>;
+
 	/// The overarching event type.
 	type Event: From<Event<Self, I>> + Into<<Self as system::Trait>::Event>;
 
@@ -69,14 +72,32 @@ pub trait Trait<I=DefaultInstance>: system::Trait {
 
     /// The receiver of the signal for when the members have changed
     /// TODO: this is the hook for which signal's issuance should be triggered
-    type MembershipChanged: ChangeMembers<Self::AccountId>;
-    
-    // TODO: add membership origin(s)
+	type MembershipChanged: ChangeMembers<Self::AccountId>;
 
-	/// The origin that is allowed to call `found`.
-	type FounderOrigin: EnsureOrigin<Self::Origin>;
+	/// The voting threshold
+	/// TODO: move to `meta::storage` and adjust based on turnout
+	type ApprovalThreshold: Get<Permill>;
+
+	/// The origin that is allowed to call `found`
+	/// - I am unsure if this is incompatible with local `Origin` type now
+	type FounderOrigin: EnsureOrigin<<Self as Trait<I>>::Origin>;
 }
 
+// have a local origin at first for this and then plan how to scale it out
+#[derive(PartialEq, Eq, Clone, RuntimeDebug)]
+pub enum RawOrigin<AccountId, Shares, I> {
+	/// single founder to start
+	Founder(AccountId),
+	/// multiple founders upon initialization
+	MultipleFounders(Vec<(AccountId, Shares)>),
+	/// (x, y) s.t. x of the y shares that voted were in approval (<=> y disapproved)
+	ShareWeighted(Shares, Shares),
+	/// Dummy to manage the fact we have instancing.
+	_Phantom(sp_std::marker::PhantomData<I>),
+}
+
+
+/// These are the event types which form a log of state transitions indexed by clients
 decl_event! {
 	/// Events for this module.
 	pub enum Event<T, I=DefaultInstance> where
@@ -93,6 +114,10 @@ decl_error! {
 	pub enum Error for Module<T: Trait<I>, I: Instance> {
 		/// User is not a member and can't perform attempted action
 		NotAMember,
+		/// User is a member but tried to apply without membership
+		/// - could add punishment for this option but whatever, like a cost of paying for that invocation
+		/// - client-side should take care of it beforehand and not require this wasted runtime computation
+		IsAMember,
 	}
 }
 
@@ -126,25 +151,49 @@ decl_storage! {
 // The module's dispatchable functions.
 decl_module! {
 	/// The module declaration.
-	pub struct Module<T: Trait<I>, I: Instance=DefaultInstance> for enum Call where origin: T::Origin {
+	pub struct Module<T: Trait<I>, I: Instance=DefaultInstance> for enum Call where origin: <T as frame_system::Trait>::Origin {
 		type Error = Error<T, I>;
+
+		const ApprovalThreshold: Permill = T::ApprovalThreshold::get();
 
 		// Used for handling module events.
 		fn deposit_event() = default;
 
+		// delete once more logic is added
 		fn example_runtime_method(origin) -> DispatchResult {
 			let voter = ensure_signed(origin)?;
-			ensure!(Self::is_member(&voter), Error::<T, I>::NotAMember);
+			let members = <Members<T, I>>::get();
+			ensure!(Self::is_member(&members, &voter), Error::<T, I>::NotAMember);
 
 			Self::deposit_event(RawEvent::Example(voter, 26.into(), 32.into()));
 			Ok(())
 		}
+
+		fn new_member_application(origin, ) -> DispatchResult {
+			let new_member = ensure_signed(origin)?;
+			let members = <Members<T, I>>::get();
+			// this error case should add more negative incentives like why would you make us do this storage call `=>` penalty for whatever client causes this path!
+			ensure!(!Self::is_member(&members, &new_member), Error::<T, I>::IsAMember);
+			Ok(())
+		}
+
+		// new_members_application
+
+		// existing_member_changes
+
+		// existing_member_exit
+
+		// grant_application
+
+		// member_vote
 	}
 }
 
 impl<T: Trait<I>, I: Instance> Module<T, I> {
-	pub fn is_member(who: &T::AccountId) -> bool {
-		Self::members().contains(who)
+	/// Binary search of is_members to verify membership
+	/// - noted: by passing in the set of members, we can reuse it in the other runtime method instead of two calls to storage!
+	fn is_member(members: &Vec<T::AccountId>, who: &T::AccountId) -> bool {
+		members.binary_search(who).is_ok()
 	}
 }
 
