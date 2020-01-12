@@ -10,6 +10,7 @@ use sp_std::fmt::Debug;
 /// -
 pub trait Signal<AccountId> {
     /// The equivalent of the `Balances` type
+    /// - the `Into<u32>` is limiting and should be removed
     type Shares: SimpleArithmetic + FullCodec + Copy + MaybeSerializeDeserialize + Debug + Default;
 
     /// The total number of shares in circulation

@@ -11,7 +11,6 @@ use frame_support::{
     decl_error, decl_event, decl_module, decl_storage, dispatch::DispatchResult, ensure,
 };
 use frame_system::{self as system, ensure_root, ensure_signed};
-use sp_core::u32_trait::Value as U32;
 use sp_runtime::{
     traits::{
         AccountIdConversion, CheckedSub, EnsureOrigin, IntegerSquareRoot, Saturating, StaticLookup,
@@ -75,10 +74,6 @@ pub trait Trait<I = DefaultInstance>: system::Trait {
     /// TODO: this is the hook for which signal's issuance should be triggered
     type MembershipChanged: ChangeMembers<Self::AccountId>;
 
-    /// The voting threshold
-    /// TODO: move to `meta::storage` and adjust based on turnout
-    type ApprovalThreshold: Get<Permill>;
-
     /// The origin that is allowed to call `found`
     /// - I am unsure if this is incompatible with local `Origin` type now
     type FounderOrigin: EnsureOrigin<<Self as Trait<I>>::Origin>;
@@ -137,7 +132,11 @@ decl_storage! {
         MemberApplications: Vec<MemberApplication<T::AccountId, BalanceOf<T, I>, T::BlockNumber>>;
 
         /// The current grant applications
-        GrantApplications: Vec<GrantApplication<T::AccountId, BalanceOf<T, I>, T::BlockNumber>>;
+		GrantApplications: Vec<GrantApplication<T::AccountId, BalanceOf<T, I>, T::BlockNumber>>;
+
+		///
+		
+		/// Sponsored Member
 
         /// Pending payouts; ordered by block number, with the amount that should be paid out.
         /// - eventually using `sauce::scheduler` for logic isolation (increased future auditability)
@@ -158,8 +157,6 @@ decl_module! {
     pub struct Module<T: Trait<I>, I: Instance=DefaultInstance> for enum Call where origin: <T as frame_system::Trait>::Origin {
         type Error = Error<T, I>;
 
-        const ApprovalThreshold: Permill = T::ApprovalThreshold::get();
-
         // Used for handling module events.
         fn deposit_event() = default;
 
@@ -173,7 +170,7 @@ decl_module! {
             Ok(())
         }
 
-        fn new_member_application(origin, ) -> DispatchResult {
+        fn new_member_application(origin) -> DispatchResult {
             let new_member = ensure_signed(origin)?;
             let members = <Members<T, I>>::get();
             // this error case should add more negative incentives like why would you make us do this storage call `=>` penalty for whatever client causes this path!
@@ -198,7 +195,7 @@ impl<T: Trait<I>, I: Instance> Module<T, I> {
     /// - noted: by passing in the set of members, we can reuse it in the other runtime method instead of two calls to storage!
     fn is_member(members: &Vec<T::AccountId>, who: &T::AccountId) -> bool {
         members.binary_search(who).is_ok()
-    }
+    } // TODO: should change back if most usages don't call map 2 or more times in runtime methods
 }
 
 pub struct EnsureFounder<AccountId, Shares, I = DefaultInstance>(
@@ -235,35 +232,37 @@ impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<Accoun
     }
 }
 
-// // Measures proportion of share weight passed in through the origin
-// pub struct EnsureShareWeightMoreThan<N: U32, D: U32, Shares, I = DefaultInstance>(
-//     sp_std::marker::PhantomData<(N, D, Shares, I)>,
-// );
+// Measures proportion of share weight passed in through the origin
+pub struct EnsureShareWeightMoreThan<Permill, AccountId, Shares, T: Trait<I>, I = DefaultInstance>(
+    sp_std::marker::PhantomData<(Permill, AccountId, Shares, T, I)>,
+);
 
-// impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, N: U32, D: U32, Shares, I> EnsureOrigin<O> for EnsureShareWeightMoreThan<N, D, Shares, I>
-// {
-//     type Success = ();
-//     fn try_origin(o: O) -> Result<Self::Success, O> {
-//         o.into().and_then(|o| match o {
-//             RawOrigin::ShareWeighted(n, m) if n * D::VALUE > N::VALUE * m => Ok(()),
-//             r => Err(O::from(r)),
-//         })
-//     }
-// }
+impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, Permill, AccountId, Shares, T: Trait<I>, I> EnsureOrigin<O> for EnsureShareWeightMoreThan<Permill, AccountId, Shares, T, I>
+{
+    type Success = ();
+    fn try_origin(o: O) -> Result<Self::Success, O> {
+        o.into().and_then(|o| match o {
+            RawOrigin::ShareWeighted(n, m) => Ok(()),
+            r => Err(O::from(r)),
+        })
+    }
+}
 
-// pub struct EnsureShareWeighAtLeast<N: U32, D: U32, Shares, I = DefaultInstance>(
-//     sp_std::marker::PhantomData<(N, D, Shares, I)>,
-// );
+pub struct EnsureShareWeightAtLeast<Permill, AccountId, Shares, T: Trait<I>, I = DefaultInstance>(
+    sp_std::marker::PhantomData<(Permill, AccountId, Shares, T, I)>,
+);
 
-// impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, N: U32, D: U32, Shares, I> EnsureOrigin<O> for EnsureShareWeightAtLeast<N, D, Shares, I>
-// {
-//     type Success = ();
-//     fn try_origin(o: O) -> Result<Self::Success, O> {
-//         o.into().and_then(|o| match o {
-//             RawOrigin::ShareWeighted(n, m) if n * D::VALUE >= N::VALUE * m => Ok(()),
-//             r => Err(O::from(r)),
-//         })
-//     }
-// }
+impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, Permill, AccountId, Shares, T: Trait<I>, I> EnsureOrigin<O> for EnsureShareWeightAtLeast<Permill, AccountId, Shares, T, I>
+{
+    type Success = ();
+    fn try_origin(o: O) -> Result<Self::Success, O> {
+        o.into().and_then(|o| match o {
+			// TODO: check actual thresholds - see democracy and issue #
+			RawOrigin::ShareWeighted(n, m) => Ok(()),
+			// this is exhaustive?
+            r => Err(O::from(r)),
+        })
+    }
+}
 
 // todo: tests in another file

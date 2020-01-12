@@ -78,6 +78,9 @@ pub struct Votes<AccountId> {
 
 decl_storage! {
 	trait Store for Module<T: Trait<I>, I: Instance=DefaultInstance> as Collective {
+		/// Permissioned storage items, managed by the local origin
+		/// 1. consensus thresholds (need to be different for each decision?)
+
 		/// The hashes of the active proposals.
 		pub Proposals get(fn proposals): Vec<T::Hash>;
 		/// Actual proposal for a given hash, if it's current.
