@@ -18,13 +18,16 @@ use sp_runtime::{
 };
 use sp_std::prelude::*;
 
-pub type Shares<T, I> = <<T as Trait<I>>::Signal as Signal<<T as system::Trait>::AccountId>>::Shares;
-type BalanceOf<T, I> = <<T as Trait<I>>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
+/// Shares Type
+/// - working on Signal trait in util but this works for prototyping...
+/// ...just keep things as readable as possible (trade precision for readability)
+pub type Shares = u32;
+type BalanceOf<T, I> = <<T as Trait<I>>::Collateral as Currency<<T as system::Trait>::AccountId>>::Balance;
 
 const MODULE_ID: ModuleId = ModuleId(*b"mololoch");
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
-pub struct GrantApplication<AccountId, Currency, BlockNumber> {
+pub struct GrantApplication<AccountId, BalanceOf, BlockNumber, I> {
     /// Identifier for this grant application
     /// - just a nonce for now
     id: u32,
@@ -35,7 +38,7 @@ pub struct GrantApplication<AccountId, Currency, BlockNumber> {
     /// Schedule for payouts
     /// - instead of encoding it like this, it should be encoded as a polynomial...this data structure costs more the longer the proposed duration
     /// - see `VestingSchedule` and staking/inflation curve
-    schedule: Vec<(BlockNumber, Currency)>,
+    schedule: Vec<(BlockNumber, BalanceOf<I>)>,
 }
 
 /// The module's configuration trait
@@ -44,30 +47,23 @@ pub trait Trait<I = DefaultInstance>: system::Trait {
     type Origin: From<RawOrigin<Self::AccountId, <Self as Trait<I>>::Signal, I>>;
 
     /// The overarching event type.
-    type Event: From<Event<Self, I>> + Into<<Self as system::Trait>::Event>;
-
-    /// The type that corresponds to native signal
-    type Signal: Signal<Self::AccountId>;
+	type Event: From<Event<Self, I>> + Into<<Self as system::Trait>::Event>;
+	
+	// Signal or Shares type will go here
 
     /// The type that corresponds to some outside currency
-    /// TODO: change this and collateral to different types in `util::signal` based on requirements (impl From<Currency> though)
-    type Currency: Currency<Self::AccountId>;
-
-    /// The native value standard, corresponding to collateral
-    type Collateral: ReservableCurrency<Self::AccountId>;
+    type Collateral: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
 
     /// The receiver of the signal for when the members have changed
-    /// TODO: this is the hook for which signal's issuance should be triggered
+    /// TODO: this is the hook for which share issuance should be triggered
     type MembershipChanged: ChangeMembers<Self::AccountId>;
 
-    /// The origin that is allowed to call `found`
-    /// - I am unsure if this is incompatible with local `Origin` type now
-    type FounderOrigin: EnsureOrigin<<Self as Trait<I>>::Origin>;
+	/// import the meta origin instead of using a `FounderOrigin` here
 }
 
 // have a local origin at first for this and then plan how to scale it out
 #[derive(PartialEq, Eq, Clone, RuntimeDebug)]
-pub enum RawOrigin<AccountId, Shares, I> {
+pub enum RawOrigin<AccountId, I> {
     /// single founder to start
     Founder(AccountId, Shares),
     /// multiple founders upon initialization

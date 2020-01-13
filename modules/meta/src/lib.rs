@@ -32,7 +32,7 @@ use util::Signal;
 
 /// Simple index type for proposal counting.
 pub type ProposalIndex = u32;
-pub type Shares<T, I> = <<T as Trait<I>>::Signal as Signal<<T as system::Trait>::AccountId>>::Shares;
+pub type Shares = u32;
 type BalanceOf<T, I> = <<T as Trait<I>>::Collateral as Currency<<T as system::Trait>::AccountId>>::Balance;
 
 /// A number of members.
@@ -48,9 +48,6 @@ pub trait Trait<I=DefaultInstance>: frame_system::Trait {
 	/// The collateral proposed for membership applications (replace w/ custom type once I have a better idea of what that looks like)
 	type Collateral: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
 
-	/// The type that corresponds to native signal
-    type Signal: Signal<Self::AccountId>;
-
 	/// The outer call dispatch type.
 	type Proposal: Parameter + Dispatchable<Origin=<Self as Trait<I>>::Origin>;
 
@@ -58,7 +55,9 @@ pub trait Trait<I=DefaultInstance>: frame_system::Trait {
 	type Event: From<Event<Self, I>> + Into<<Self as frame_system::Trait>::Event>;
 }
 
-/// Origin for the collective module.
+/// Origin for the meta module
+/// - even if each of these origin checks is perfunctory, it provides some explicit indication of where
+/// the required checks occur for each origin (in the runtime)
 #[derive(PartialEq, Eq, Clone, RuntimeDebug)]
 pub enum RawOrigin<AccountId, I> {
 	/// It has been condoned by a given number of members of the collective from a given total.
@@ -68,7 +67,7 @@ pub enum RawOrigin<AccountId, I> {
 	ShareWeighted(Shares, Shares),
 	/// It has been condoned by two members (some decisions require this)
 	TwoMembers(AccountId, AccountId),
-	/// It has been condoned by a single member of the collective.
+	/// It has been condoned/vetoed by a single member of the meta module (like the `Founder` origin)
 	Member(AccountId),
 	/// Dummy to manage the fact we have instancing.
 	_Phantom(sp_std::marker::PhantomData<I>),
@@ -219,7 +218,7 @@ decl_module! {
 
 			if threshold < 2 {
 				let seats = Self::members().len() as MemberCount;
-				let ok = proposal.dispatch(RawOrigin::Members(1, seats).into()).is_ok();
+				let ok = proposal.dispatch(RawOrigin::OnePerson1Vote(1, seats).into()).is_ok();
 				Self::deposit_event(RawEvent::Executed(proposal_hash, ok));
 			} else {
 				let index = Self::proposal_count();
@@ -317,7 +316,7 @@ impl<T: Trait<I>, I: Instance> ChangeMembers<T::AccountId> for Module<T, I> {
 			<Voting<T, I>>::mutate(h, |v|
 				if let Some(mut votes) = v.take() {
 					votes.ayes = votes.ayes.into_iter()
-						.filter(|i| outgoing.binary_search(i).is_err())
+						.filter(|(i, j)| outgoing.binary_search(i).is_err())
 						.collect();
 					votes.nays = votes.nays.into_iter()
 						.filter(|i| outgoing.binary_search(i).is_err())
@@ -347,7 +346,7 @@ where
 	OuterOrigin: Into<result::Result<RawOrigin<AccountId, I>, OuterOrigin>>
 {
 	match o.into() {
-		Ok(RawOrigin::Members(x, _)) if x >= n => Ok(n),
+		Ok(RawOrigin::OnePerson1Vote(x, _)) if x >= n => Ok(n),
 		_ => Err("bad origin: expected to be a threshold number of members"),
 	}
 }
@@ -377,7 +376,7 @@ impl<
 	type Success = (MemberCount, MemberCount);
 	fn try_origin(o: O) -> Result<Self::Success, O> {
 		o.into().and_then(|o| match o {
-			RawOrigin::Members(n, m) if n >= N::VALUE => Ok((n, m)),
+			RawOrigin::OnePerson1Vote(n, m) if n >= N::VALUE => Ok((n, m)),
 			r => Err(O::from(r)),
 		})
 	}
@@ -396,7 +395,7 @@ impl<
 	type Success = ();
 	fn try_origin(o: O) -> Result<Self::Success, O> {
 		o.into().and_then(|o| match o {
-			RawOrigin::Members(n, m) if n * D::VALUE > N::VALUE * m => Ok(()),
+			RawOrigin::OnePerson1Vote(n, m) if n * D::VALUE > N::VALUE * m => Ok(()),
 			r => Err(O::from(r)),
 		})
 	}
@@ -415,7 +414,7 @@ impl<
 	type Success = ();
 	fn try_origin(o: O) -> Result<Self::Success, O> {
 		o.into().and_then(|o| match o {
-			RawOrigin::Members(n, m) if n * D::VALUE >= N::VALUE * m => Ok(()),
+			RawOrigin::OnePerson1Vote(n, m) if n * D::VALUE >= N::VALUE * m => Ok(()),
 			r => Err(O::from(r)),
 		})
 	}
