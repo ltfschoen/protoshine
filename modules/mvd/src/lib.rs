@@ -258,7 +258,9 @@ impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<Accoun
     fn try_origin(o: O) -> Result<Self::Success, O> {
         o.into().and_then(|o| match o {
 			// TODO: check actual thresholds - see democracy and issue #
-			RawOrigin::ShareWeighted(n, m) => Ok(()),
+			RawOrigin::ShareWeighted(n, m) => {
+				if n >= 
+			},
 			// this is exhaustive?
             r => Err(O::from(r)),
         })
