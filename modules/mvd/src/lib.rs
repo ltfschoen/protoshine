@@ -2,9 +2,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 mod origins;
-mod util;
-use util::Signal;
-
+use util::{Threshold, Signal};
 use codec::{Decode, Encode};
 use frame_support::traits::{ChangeMembers, Currency, Get, ReservableCurrency};
 use frame_support::{
@@ -24,18 +22,6 @@ pub type Shares<T, I> = <<T as Trait<I>>::Signal as Signal<<T as system::Trait>:
 type BalanceOf<T, I> = <<T as Trait<I>>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
 
 const MODULE_ID: ModuleId = ModuleId(*b"mololoch");
-
-/// An application to join the membership
-#[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug)]
-pub struct MemberApplication<AccountId, Currency, Shares> {
-    /// The applicant
-    who: AccountId,
-    /// The collateral promised and slowly staked over the duration of the proposal process
-    /// TODO: make issue for why this should be made more complex eventually s.t. amount staked only is applied once approved and reserved changes based on prob(passage)
-    collateral: Currency,
-    /// The reward that the bidder has requested for successfully joining the society.
-    shares_requested: Shares,
-}
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct GrantApplication<AccountId, Currency, BlockNumber> {
@@ -86,8 +72,8 @@ pub enum RawOrigin<AccountId, Shares, I> {
     Founder(AccountId, Shares),
     /// multiple founders upon initialization
     Founders(Vec<(AccountId, Shares)>),
-    /// (x, y) s.t. x of the y shares that voted were in approval (<=> y disapproved)
-    ShareWeighted(Shares, Shares),
+    /// (a, b, c) s.t. a = yes_votes, b = all_votes, c = all_possible_votes
+    ShareWeighted(Shares, Shares, Shares),
     /// Dummy to manage the fact we have instancing.
     _Phantom(sp_std::marker::PhantomData<I>),
 }
@@ -123,14 +109,12 @@ decl_error! {
 // This module's storage items.
 decl_storage! {
     trait Store for Module<T: Trait<I>, I: Instance=DefaultInstance> as Moloch {
+		/// Pull these in from meta or otherwise assign them
         /// The current set of members
         pub Members get(members): Vec<T::AccountId>;
         /// The shares of members
-        pub MemberShares get(fn member_shares): map T::AccountId => Shares<T, I>;
-
-        /// The current membership applications
-        MemberApplications: Vec<MemberApplication<T::AccountId, BalanceOf<T, I>, T::BlockNumber>>;
-
+		pub MemberShares get(fn member_shares): map T::AccountId => Shares<T, I>;
+		
         /// The current grant applications
 		GrantApplications: Vec<GrantApplication<T::AccountId, BalanceOf<T, I>, T::BlockNumber>>;
 
@@ -168,25 +152,23 @@ decl_module! {
 
             Self::deposit_event(RawEvent::Example(voter, 26.into(), 32.into()));
             Ok(())
-        }
+		}
+		
+		fn sponsor_application(origin) -> DispatchResult {
+			Ok(())
+		}
 
-        fn new_member_application(origin) -> DispatchResult {
-            let new_member = ensure_signed(origin)?;
-            let members = <Members<T, I>>::get();
-            // this error case should add more negative incentives like why would you make us do this storage call `=>` penalty for whatever client causes this path!
-            ensure!(!Self::is_member(&members, &new_member), Error::<T, I>::IsAMember);
-            Ok(())
-        }
+		fn grant_proposal(origin) -> DispatchResult {
+			Ok(())
+		}
 
-        // new_members_application
+		fn vote(origin) -> DispatchResult {
+			Ok(())
+		}
 
-        // existing_member_changes
-
-        // existing_member_exit
-
-        // grant_application
-
-        // member_vote
+		fn vote_member(origin) -> DispatchResult {
+			Ok(())
+		}
     }
 }
 
@@ -233,35 +215,34 @@ impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<Accoun
 }
 
 // Measures proportion of share weight passed in through the origin
-pub struct EnsureShareWeightMoreThan<Permill, AccountId, Shares, T: Trait<I>, I = DefaultInstance>(
-    sp_std::marker::PhantomData<(Permill, AccountId, Shares, T, I)>,
+pub struct EnsureShareWeightMoreThan<H: Threshold, AccountId, Shares, T: Trait<I>, I = DefaultInstance>(
+    sp_std::marker::PhantomData<(H, AccountId, Shares, T, I)>,
 );
 
-impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, Permill, AccountId, Shares, T: Trait<I>, I> EnsureOrigin<O> for EnsureShareWeightMoreThan<Permill, AccountId, Shares, T, I>
+impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, H: Threshold, AccountId, Shares, T: Trait<I>, I> EnsureOrigin<O> for EnsureShareWeightMoreThan<H, AccountId, Shares, T, I>
 {
-    type Success = ();
+    type Success = (Shares, Shares, Shares);
     fn try_origin(o: O) -> Result<Self::Success, O> {
         o.into().and_then(|o| match o {
-            RawOrigin::ShareWeighted(n, m) => Ok(()),
+			// weak sauce - update this with some default curve parameterization between a, b, and c
+            RawOrigin::ShareWeighted(a, b, c) => Ok((a, b, c)),
             r => Err(O::from(r)),
         })
     }
 }
 
-pub struct EnsureShareWeightAtLeast<Permill, AccountId, Shares, T: Trait<I>, I = DefaultInstance>(
-    sp_std::marker::PhantomData<(Permill, AccountId, Shares, T, I)>,
+pub struct EnsureShareWeightAtLeast<H: Threshold, AccountId, Shares, T: Trait<I>, I = DefaultInstance>(
+    sp_std::marker::PhantomData<(H, AccountId, Shares, T, I)>,
 );
 
-impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, Permill, AccountId, Shares, T: Trait<I>, I> EnsureOrigin<O> for EnsureShareWeightAtLeast<Permill, AccountId, Shares, T, I>
+impl<O: Into<Result<RawOrigin<AccountId, Shares, I>, O>> + From<RawOrigin<AccountId, Shares, I>>, H: Threshold, AccountId, Shares, T: Trait<I>, I> EnsureOrigin<O> for EnsureShareWeightAtLeast<H, AccountId, Shares, T, I>
 {
-    type Success = ();
+    type Success = (Shares, Shares, Shares);
     fn try_origin(o: O) -> Result<Self::Success, O> {
         o.into().and_then(|o| match o {
 			// TODO: check actual thresholds - see democracy and issue #
-			RawOrigin::ShareWeighted(n, m) => {
-				if n >= 
-			},
-			// this is exhaustive?
+			RawOrigin::ShareWeighted(a, b, c) => Ok((a, b, c)),
+			// this is exhaustive? wtf is `O`
             r => Err(O::from(r)),
         })
     }

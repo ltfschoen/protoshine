@@ -14,6 +14,7 @@ sp-io = { package = "sp-io", git = "https://github.com/paritytech/substrate.git"
 sp-runtime = { package = "sp-runtime", git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 frame-support = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 frame-system = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
+util = {path = "../util"}
 
 [dev-dependencies]
 hex-literal = "0.2.1"

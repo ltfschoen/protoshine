@@ -1,13 +1,27 @@
 use codec::FullCodec;
 use frame_support::traits::ReservableCurrency;
-use sp_runtime::traits::{MaybeSerializeDeserialize, SimpleArithmetic};
+use sp_runtime::{
+    traits::{MaybeSerializeDeserialize, SimpleArithmetic},
+    Permill,
+};
 use sp_std::fmt::Debug;
+
+/// Wrapper around Permill for `EnsureShareWeight{AtLeast, MoreThan}`
+pub trait Threshold {
+    const THRESHOLD: Permill;
+}
+
+/// Requires 1/2x + 1 shares in favor for x shares that voted
+pub struct _Majority; impl Threshold for _Majority { const THRESHOLD: Permill = Permill::from_percent(51); }
+/// Requires 2/3x + 1 shares in favor for x shares that voted
+pub struct _BFT_SuperMajority; impl Threshold for _BFT_SuperMajority { const THRESHOLD: Permill = Permill::from_percent(67); }
+/// Requires all shares that voted to be in favor
+pub struct _Unanimous; impl Threshold for _Unanimous { const THRESHOLD: Permill = Permill::from_percent(100); }
 
 /// Signal is used by members to influence collective action. It can be used to
 /// - sponsor proposals (from themselves or for outside applications)
 /// - propose edits to proposals in screening
 /// - vote on proposals
-/// -
 pub trait Signal<AccountId> {
     /// The equivalent of the `Balances` type
     /// - the `Into<u32>` is limiting and should be removed
@@ -33,3 +47,5 @@ pub trait Signal<AccountId> {
 // - voting on proposals
 // - voting on rules, targets (meta)
 // - weight in automatic preference aggregation (later)
+
+// Collateral is an enum of types that can be accepted as collateral 

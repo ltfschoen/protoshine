@@ -24,13 +24,16 @@ use sp_runtime::traits::{Hash, EnsureOrigin};
 use frame_support::weights::SimpleDispatchInfo;
 use frame_support::{
 	dispatch::{Dispatchable, Parameter}, codec::{Encode, Decode},
-	traits::{ChangeMembers, InitializeMembers}, decl_module, decl_event,
+	traits::{ChangeMembers, ReservableCurrency, Currency, InitializeMembers}, decl_module, decl_event,
 	decl_storage, decl_error, ensure,
 };
 use frame_system::{self as system, ensure_signed, ensure_root};
+use util::Signal;
 
 /// Simple index type for proposal counting.
 pub type ProposalIndex = u32;
+pub type Shares<T, I> = <<T as Trait<I>>::Signal as Signal<<T as system::Trait>::AccountId>>::Shares;
+type BalanceOf<T, I> = <<T as Trait<I>>::Collateral as Currency<<T as system::Trait>::AccountId>>::Balance;
 
 /// A number of members.
 ///
@@ -41,6 +44,12 @@ pub type MemberCount = u32;
 pub trait Trait<I=DefaultInstance>: frame_system::Trait {
 	/// The outer origin type.
 	type Origin: From<RawOrigin<Self::AccountId, I>>;
+
+	/// The collateral proposed for membership applications (replace w/ custom type once I have a better idea of what that looks like)
+	type Collateral: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
+
+	/// The type that corresponds to native signal
+    type Signal: Signal<Self::AccountId>;
 
 	/// The outer call dispatch type.
 	type Proposal: Parameter + Dispatchable<Origin=<Self as Trait<I>>::Origin>;
@@ -53,7 +62,12 @@ pub trait Trait<I=DefaultInstance>: frame_system::Trait {
 #[derive(PartialEq, Eq, Clone, RuntimeDebug)]
 pub enum RawOrigin<AccountId, I> {
 	/// It has been condoned by a given number of members of the collective from a given total.
-	Members(MemberCount, MemberCount),
+	OnePerson1Vote(MemberCount, MemberCount),
+	/// It has been condoned by a given number of shares of the collective from a given total number of shares
+	/// stuck here, maybe use some sort of converter
+	ShareWeighted(Shares, Shares),
+	/// It has been condoned by two members (some decisions require this)
+	TwoMembers(AccountId, AccountId),
 	/// It has been condoned by a single member of the collective.
 	Member(AccountId),
 	/// Dummy to manage the fact we have instancing.
@@ -71,15 +85,30 @@ pub struct Votes<AccountId> {
 	/// The number of approval votes that are needed to pass the motion.
 	threshold: MemberCount,
 	/// The current set of voters that approved it.
-	ayes: Vec<AccountId>,
+	ayes: Vec<(AccountId, Shares)>,
 	/// The current set of voters that rejected it.
-	nays: Vec<AccountId>,
+	nays: Vec<(AccountId, Shares)>,
+}
+
+/// An application to join the membership
+#[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug)]
+pub struct MemberApplication<AccountId, Balance> {
+    /// The applicant
+    who: AccountId,
+    /// The collateral promised and slowly staked over the duration of the proposal process
+    /// TODO: make issue for why this should be made more complex eventually s.t. amount staked only is applied once approved and reserved changes based on prob(passage)
+    collateral: Balance,
+    /// The reward that the bidder has requested for successfully joining the society.
+    shares_requested: u32,
 }
 
 decl_storage! {
 	trait Store for Module<T: Trait<I>, I: Instance=DefaultInstance> as Collective {
 		/// Permissioned storage items, managed by the local origin
 		/// 1. consensus thresholds (need to be different for each decision?)
+
+		/// The current membership applications
+        MemberApplications: Vec<MemberApplication<T::AccountId, BalanceOf<T, I>>>;
 
 		/// The hashes of the active proposals.
 		pub Proposals get(fn proposals): Vec<T::Hash>;

@@ -1,5 +1,5 @@
 [package]
-name = "moloch"
+name = "util"
 version = "0.1.0"
 authors = ["4meta5 <asinghchrony@protonmail.com>"]
 edition = "2018"
@@ -15,8 +15,6 @@ sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "ma
 frame-support = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 frame-system = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 rand_chacha = { version = "0.2", default-features = false }
-meta = {path = "../meta"}
-util = {path = "../util"}
 
 [dev-dependencies]
 sp-core = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }

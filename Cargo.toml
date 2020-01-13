@@ -2,4 +2,5 @@
 members = [
     "modules/meta",
     "modules/mvd",
+    "modules/util",
 ]
