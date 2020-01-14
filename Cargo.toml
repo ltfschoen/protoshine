@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "modules/meta",
     "modules/mvd",
-    "modules/util",
+    "modules/signal",
 ]
