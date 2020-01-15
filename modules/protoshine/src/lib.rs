@@ -1,5 +1,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
+mod bank;
+use bank::{Bank, DEFAULT_ID};
+
 #[cfg(feature = "std")]
 use serde::{Serialize, Deserialize};
 use sp_std::prelude::*;
@@ -8,7 +17,7 @@ use frame_support::traits::{
 	Currency, ExistenceRequirement, Get, Imbalance, OnUnbalanced,
 	ReservableCurrency, WithdrawReason
 };
-use sp_runtime::{Permill, RuntimeDebug, DispatchResult, ModuleId};
+use sp_runtime::{Permill, RuntimeDebug, ModuleId, DispatchResult};
 use sp_runtime::traits::{Zero, EnsureOrigin, StaticLookup, AccountIdConversion, Saturating};
 use frame_support::weights::SimpleDispatchInfo;
 use codec::{Encode, Decode};
@@ -17,8 +26,6 @@ use frame_system::{self as system, ensure_signed};
 type ProposalIndex = u32;
 type Shares = u32;
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as frame_system::Trait>::AccountId>>::Balance;
-
-const MODULE_ID: ModuleId = ModuleId(*b"sunshine");
 
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
@@ -223,21 +230,13 @@ decl_storage! {
 
 		/// Members should be replaced by group scaling logic
 		Members get(fn members): Vec<T::AccountId>;
+		/// Should be changed to `bank_accounts` when we scale this logic for sunshine
+		BankAccount get(fn bank_account): Bank<T::AccountId>;
 		/// Share amounts maps to (shares_reserved, total_shares) s.t. shares_reserved are reserved for votes or sponsorships
 		MembershipShares get(fn membership_shares): map T::AccountId => Option<(Shares, Shares)>;
 		/// Sponsorships, votes and all other outstanding signalling by members
 		/// - This should be made into a more descriptive collateralization struct to enable selective rehypothecation for certain internal actions (like sponsorships sometimes)
 		OutstandingMemberSignals get(fn outstanding_member_signals): map T::AccountId => Option<Vec<(ProposalIndex, Shares)>>;
-	}
-	add_extra_genesis {
-		build(|_config| {
-			// init group account
-			let _ = T::Currency::make_free_balance_be(
-				&<Module<T>>::account_id(),
-				T::Currency::minimum_balance(),
-			);
-			// TODO: scored_pool-esque share configuration
-		});
 	}
 }
 
@@ -277,17 +276,13 @@ impl<T: Trait> Module<T> {
 		<Members<T>>::get().contains(who)
 	}
 
-	/// The account ID of the treasury pot.
-	///
-	/// This actually does computation. If you need to keep using it, then make sure you cache the
-	/// value and only call this once.
-	pub fn account_id() -> T::AccountId {
-		MODULE_ID.into_account()
-	}
-
 	/// The required application bond for membership
 	/// TODO: change logic herein to calculate bond based on ratio of `stake_promised` to `shares_requested` relative to existing parameterization
 	fn calculate_member_application_bond(stake_promised: BalanceOf<T>, shares_requested: Shares) -> BalanceOf<T> {
+		// calculate ratio of shares_requested to stake_promised
+		// compare the ratio of the applicant to the ratio of the current group
+
+		// old implementation - to be deleted
 		T::MembershipProposalBondMinimum::get().max(T::MembershipProposalBond::get() * stake_promised)
 	}
 
@@ -356,10 +351,14 @@ impl<T: Trait> Module<T> {
 // 		// Self::deposit_event(RawEvent::Rollover(budget_remaining));
 // 	//}
 
-	/// Return the amount of money in the pot.
-	// The existential deposit is not part of the pot so treasury account never gets deleted.
-	fn pot() -> BalanceOf<T> {
-		T::Currency::free_balance(&Self::account_id())
+	pub fn account_id() -> T::AccountId {
+		DEFAULT_ID.into_account()
+	}
+
+	/// Return the amount in the bank (in T::Currency denomination)
+	fn bank_balance(bank_account: &T::AccountId) -> BalanceOf<T> {
+		T::Currency::free_balance(bank_account)
+			// TODO: ponder whether this should be here (not if I don't follow the same existential deposit system as polkadot...)
 			// Must never be less than 0 but better be safe.
 			.saturating_sub(T::Currency::minimum_balance())
 	}
