@@ -142,20 +142,21 @@ decl_module! {
 		///		- `max_share_bond` exists so that UI's estimate isn't too wrong and it fucks over sponsors
 		///		- any punishment if the sponsored proposal is rejected?
 		/// - note that someone could sponsor their own application
-		/// - (1) and (2) should be reordered s.t. the first check panics the most often, thereby limiting computational costs in the event of panics
-		fn sponsor_membership_application(origin, max_share_bond: Shares, index: ProposalIndex, ) -> DispatchResult {
+		/// - (1), (2) and (3) should be reordered s.t. the first check panics the most often, thereby limiting computational costs in the event of panics
+		fn sponsor_membership_application(origin, max_share_bond: Shares, index: ProposalIndex) -> DispatchResult {
 			let sponsor = ensure_signed(origin)?;
 			ensure!(Self::is_member(&sponsor), Error::<T>::NotAMember);
 
+			// (1)
 			let wrapped_membership_proposal = <MembershipApplications<T>>::get(index);
 			ensure!(wrapped_membership_proposal.is_some(), Error::<T>::IndexWithNoAssociatedMembershipProposal);
 			let membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
 
-			// (1) should be calculated by UI ahead of time and calculated, but this structure fosters dynamic collateral pricing
+			// (2) should be calculated by UI ahead of time and calculated, but this structure fosters dynamic collateral pricing
 			let sponsor_bond = Self::calculate_membership_sponsor_bond(membership_proposal.stake_promised.clone(), membership_proposal.shares_requested.clone());
 			ensure!(sponsor_bond <= max_share_bond, Error::<T>::SponsorBondExceedsExpectations);
 
-			// (2) check if the sponsor has enough to afford the sponsor_bond
+			// (3) check if the sponsor has enough to afford the sponsor_bond
 			let (reserved_shares, total_shares) = <MembershipShares<T>>::get(&sponsor).expect("invariant i: all members must have some shares and therefore some item in the shares map");
 			// TODO: add overflow check here and resolution
 			let new_reserved = reserved_shares + sponsor_bond;
@@ -184,17 +185,30 @@ decl_module! {
 				..membership_proposal
 			};
 			<MembershipApplications<T>>::insert(membership_proposal.index, voting_membership_proposal);
-			
+
+			// notably, sponsorship is separate from voting (this is a choice we make on behalf of users and can adjust based on user research, which is more intuitive)
+
 			Self::deposit_event(RawEvent::MembershipApplicationSponsored(index, sponsor_bond, membership_proposal.stake_promised, membership_proposal.shares_requested));
 			Ok(())
 		}
 
-		// vote which requires some vote state
+		fn vote_on_membership(origin, index: ProposalIndex, direction: bool, magnitude: Shares) -> DispatchResult {
+			let voter = ensure_signed(origin)?;
+			ensure!(Self::is_member(&voter), Error::<T>::NotAMember);
+
+			let wrapped_membership_proposal = <MembershipApplications<T>>::get(index);
+			ensure!(wrapped_membership_proposal.is_some(), Error::<T>::IndexWithNoAssociatedMembershipProposal);
+			let membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
+
+			// check some global metric for how many proposals are being voted on right now (to limit spam scenarios)
+
+			Ok(())
+		}
 	}
 }
 
 decl_storage! {
-	trait Store for Module<T: Trait> as MVD {
+	trait Store for Module<T: Trait> as Protoshine {
 		/// DEPRECATED UNTIL #7 is implemented and then this will be useful for iterating over all proposals to purge old ones
 		// MembershipApplicationQ get(fn membership_application_q): Vec<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
 
