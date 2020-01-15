@@ -1,4 +1,4 @@
-# mvd
+# protoshine
 
 ```rust
 // on-chain state
@@ -27,7 +27,7 @@ decl_module! {
 // events to emit state transitions
 decl_events! {
     ProposalProposed,
-    VoteSubmitted,
+    ProposalSponsored,
     ProposalPassed,
     MemberJoined,
     MemberLeft,
