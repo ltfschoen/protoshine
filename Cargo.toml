@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "modules/mvd",
+    "modules/protoshine",
     "modules/signal",
 ]
