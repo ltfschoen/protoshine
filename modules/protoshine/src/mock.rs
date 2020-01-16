@@ -9,7 +9,7 @@ use sp_runtime::{
 };
 
 impl_outer_origin! {
-    pub enum Origin for Test  where system = frame_system {}
+    pub enum Origin for Test where system = frame_system {}
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -47,6 +47,7 @@ impl pallet_balances::Trait for Test {
     type Balance = u64;
     type OnNewAccount = ();
     type OnFreeBalanceZero = ();
+    type OnReapAccount = System;
     type Event = ();
     type TransferPayment = ();
     type DustRemoval = ();
@@ -55,43 +56,41 @@ impl pallet_balances::Trait for Test {
     type CreationFee = CreationFee;
 }
 parameter_types! {
-    // proposal bond is 5% of amount stake_promised or the minimium
+    // proposal bond is 5% of amount stake_promised or the minimium (TODO: change this logic ASAP)
     pub const MembershipProposalBond: Permill = Permill::from_percent(5);
-    pub const ProposalBondMinimum: u64 = 1;
-    pub const SpendPeriod: u64 = 2;
-    pub const Burn: Permill = Permill::from_percent(50);
+    pub const MembershipProposalBondMinimum: u64 = 1;
+    pub const BatchPeriod: u64 = 2;
+    pub const MaximumShareIssuance: Permill = Permill::from_percent(50);
 }
 impl Trait for Test {
     type Currency = pallet_balances::Module<Test>;
-    type ApproveOrigin = frame_system::EnsureRoot<u64>;
-    type RejectOrigin = frame_system::EnsureRoot<u64>;
     // not testing event emission in this runtime or using it?
     type Event = ();
-    type ProposalRejection = ();
     type MembershipProposalBond = MembershipProposalBond;
-    type ProposalBondMinimum = ProposalBondMinimum;
-    type SpendPeriod = SpendPeriod;
-    type Burn = Burn;
+    type MembershipProposalBondMinimum = MembershipProposalBondMinimum;
+    type MaximumShareIssuance = MaximumShareIssuance;
+    type BatchPeriod = BatchPeriod;
 }
+type System = frame_system::Module<Test>;
 type Balances = pallet_balances::Module<Test>;
-type Treasury = Module<Test>;
+type Protoshine = Module<Test>;
 
 fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
-    pallet_balances::GenesisConfig::<Test>{
-        // Total issuance will be 200 with treasury account initialized at ED.
-        balances: vec![(0, 100), (1, 98), (2, 1)],
-        vesting: vec![],
-    }.assimilate_storage(&mut t).unwrap();
-    GenesisConfig::default().assimilate_storage::<Test>(&mut t).unwrap();
+    // pallet_balances::GenesisConfig::<Test>{
+    //     // Total issuance will be 200 with treasury account initialized at ED.
+    //     balances: vec![(0, 100), (1, 98), (2, 1)],
+    //     vesting: vec![],
+    // }.assimilate_storage(&mut t).unwrap();
+    // GenesisConfig::default().assimilate_storage::<Test>(&mut t).unwrap();
     t.into()
 }
 
 #[test]
 fn genesis_config_works() {
     new_test_ext().execute_with(|| {
-        assert_eq!(Treasury::pot(), 0);
-        assert_eq!(Treasury::proposal_count(), 0);
+        assert_eq!(Protoshine::bank_balance(&Protoshine::account_id()), 0);
+        assert_eq!(Protoshine::membership_application_count(), 0);
     });
 }
 

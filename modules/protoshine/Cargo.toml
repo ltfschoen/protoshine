@@ -11,12 +11,12 @@ sp-std = { git = "https://github.com/paritytech/substrate.git", branch = "master
 sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 frame-support = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 frame-system = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
+pallet-balances = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 signal = {path = "../signal"}
 
 [dev-dependencies]
 sp-io = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 sp-core = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
-pallet-balances = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 
 [features]
 default = ["std"]
