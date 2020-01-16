@@ -62,7 +62,7 @@ jobs:
     - name: Install rust toolchain
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: stable
+        rust-version: nightly
         components: clippy, rustfmt
 
     - name: cargo fmt

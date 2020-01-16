@@ -48,7 +48,8 @@ pub struct MembershipProposal<AccountId, BalanceOf, BlockNumber> {
     /// The applicant
     who: AccountId,
     /// The collateral promised and slowly staked over the duration of the proposal process
-    /// TODO: make issue for why this should be made more complex eventually s.t. amount staked only is applied once approved and reserved changes based on prob(passage)
+    /// TODO: make issue for why this should be made more complex eventually s.t. amount staked
+    /// only is applied once approved and reserved changes based on prob(passage)
     stake_promised: BalanceOf,
     /// The reward that the bidder has requested for successfully joining the society.
     shares_requested: Shares,
@@ -110,13 +111,25 @@ decl_module! {
         /// Anyone can apply to exchange shares for capital
         /// - any punishment if the application fails and does this depend on how it fails?
         /// -
-        fn membership_application(origin, stake_promised: BalanceOf<T>, shares_requested: Shares) -> DispatchResult {
+        fn membership_application(
+            origin,
+            stake_promised: BalanceOf<T>,
+            shares_requested: Shares,
+        ) -> DispatchResult {
             let applicant = ensure_signed(origin)?;
-            // these are the requirements for MEMBERSHIP applications (grant applications are different, unlike in moloch)
+            // these are the requirements for MEMBERSHIP applications (grant applications are
+            // different, unlike in moloch)
             let shares_as_balance = BalanceOf::<T>::from(shares_requested);
-            ensure!(stake_promised > T::Currency::minimum_balance() && stake_promised > shares_as_balance, Error::<T>::InvalidMembershipApplication);
+            ensure!(
+                stake_promised > T::Currency::minimum_balance() &&
+                stake_promised > shares_as_balance,
+                Error::<T>::InvalidMembershipApplication,
+            );
 
-            let collateral = Self::calculate_member_application_bond(stake_promised, shares_requested)?;
+            let collateral = Self::calculate_member_application_bond(
+                stake_promised,
+                shares_requested,
+            )?;
             T::Currency::reserve(&applicant, collateral)
                 .map_err(|_| Error::<T>::InsufficientMembershipApplicantCollateral)?;
             let c = Self::membership_application_count() + 1;
@@ -134,34 +147,49 @@ decl_module! {
             // <MembershipApplicationQ<T>>::mutate(|v| v.push(membership_app.clone()));
             <MembershipApplications<T>>::insert(c, membership_app);
 
-            Self::deposit_event(RawEvent::MembershipApplicationProposed(c, stake_promised, shares_requested, now));
+            Self::deposit_event(
+                RawEvent::MembershipApplicationProposed(c, stake_promised, shares_requested, now)
+            );
             Ok(())
         }
 
         /// Members escalate applications to be voted on
-        /// - UI should make sure the member knows how many shares they are used to sponsor and the associated risk
-        ///		- `max_share_bond` exists so that UI's estimate isn't too wrong and it fucks over sponsors
-        ///		- any punishment if the sponsored proposal is rejected?
+        /// - UI should make sure the member knows how many shares they are used to sponsor and the
+        ///    associated risk
+        ///    - `max_share_bond` exists so that UI's estimate isn't too wrong and it fucks over sponsors
+        ///    - any punishment if the sponsored proposal is rejected?
         /// - note that someone could sponsor their own application
-        /// - (1), (2) and (3) should be reordered s.t. the first check panics the most often, thereby limiting computational costs in the event of panics
+        /// - (1), (2) and (3) should be reordered s.t. the first check panics the most often,
+        ///   thereby limiting computational costs in the event of panics
         fn sponsor_membership_application(origin, index: ProposalIndex) -> DispatchResult {
             let sponsor = ensure_signed(origin)?;
             ensure!(Self::is_member(&sponsor), Error::<T>::NotAMember);
 
             // (1)
             let wrapped_membership_proposal = <MembershipApplications<T>>::get(index);
-            ensure!(wrapped_membership_proposal.is_some(), Error::<T>::IndexWithNoAssociatedMembershipProposal);
+            ensure!(
+                wrapped_membership_proposal.is_some(),
+                Error::<T>::IndexWithNoAssociatedMembershipProposal,
+            );
             let membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
 
-            // (2) should be calculated by UI ahead of time and calculated, but this structure fosters dynamic collateral pricing
-            let sponsor_bond = Self::calculate_membership_sponsor_bond(membership_proposal.stake_promised, membership_proposal.shares_requested)?;
+            // (2) should be calculated by UI ahead of time and calculated, but this structure
+            // fosters dynamic collateral pricing
+            let sponsor_bond = Self::calculate_membership_sponsor_bond(
+                membership_proposal.stake_promised,
+                membership_proposal.shares_requested,
+            )?;
 
             // (3) check if the sponsor has enough to afford the sponsor_bond
-            let (reserved_shares, total_shares) = <MembershipShares<T>>::get(&sponsor).expect("invariant i: all members must have some shares and therefore some item in the shares map");
+            let (reserved_shares, total_shares) = <MembershipShares<T>>::get(&sponsor)
+                .expect("invariant i: all members must have some shares and therefore some item in the shares map");
             // TODO: add overflow check here and resolution
             let new_reserved = reserved_shares + sponsor_bond;
             // check if the sponsor has enough free shares to afford the sponsor_bond
-            ensure!(total_shares >= new_reserved, Error::<T>::InsufficientMembershipSponsorCollateral);
+            ensure!(
+                total_shares >= new_reserved,
+                Error::<T>::InsufficientMembershipSponsorCollateral,
+            );
 
             // Enforce reservation of sponsor bond via permissioned access to runtime storage items
             let wrapped_member_signals = <OutstandingMemberSignals<T>>::get(&sponsor);
@@ -172,7 +200,8 @@ decl_module! {
             } else {
                 // wrapped_member_signals.is_some()
                 if let Some(mut signals) = wrapped_member_signals {
-                    // TODO: replace with `insert` because `mutate` this duplicates the first call to this storage item (`get`)
+                    // TODO: replace with `insert` because `mutate` this duplicates the first call
+                    // to this storage item (`get`)
                     // - `insert` isn't working instead because of some `EncodeLike` error
                     <OutstandingMemberSignals<T>>::mutate(&sponsor, |_| signals.push(new_item));
                 }
@@ -184,23 +213,43 @@ decl_module! {
                 stage: ProposalStage::Voting,
                 ..membership_proposal
             };
-            <MembershipApplications<T>>::insert(membership_proposal.index, voting_membership_proposal);
+            <MembershipApplications<T>>::insert(
+                membership_proposal.index,
+                voting_membership_proposal,
+            );
 
-            // notably, sponsorship is separate from voting (this is a choice we make on behalf of users and can adjust based on user research, which is more intuitive)
+            // notably, sponsorship is separate from voting (this is a choice we make on behalf of
+            // users and can adjust based on user research, which is more intuitive)
 
-            Self::deposit_event(RawEvent::MembershipApplicationSponsored(index, sponsor_bond, membership_proposal.stake_promised, membership_proposal.shares_requested));
+            Self::deposit_event(
+                RawEvent::MembershipApplicationSponsored(
+                    index, sponsor_bond,
+                    membership_proposal.stake_promised,
+                    membership_proposal.shares_requested,
+                )
+            );
             Ok(())
         }
 
-        fn vote_on_membership(origin, index: ProposalIndex, _direction: bool, _magnitude: Shares) -> DispatchResult {
+        fn vote_on_membership(
+            origin,
+            index: ProposalIndex,
+            _direction: bool,
+            _magnitude: Shares,
+        ) -> DispatchResult {
             let voter = ensure_signed(origin)?;
             ensure!(Self::is_member(&voter), Error::<T>::NotAMember);
 
             let wrapped_membership_proposal = <MembershipApplications<T>>::get(index);
-            ensure!(wrapped_membership_proposal.is_some(), Error::<T>::IndexWithNoAssociatedMembershipProposal);
-            let _membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
+            ensure!(
+                wrapped_membership_proposal.is_some(),
+                Error::<T>::IndexWithNoAssociatedMembershipProposal,
+            );
+            let _membership_proposal = wrapped_membership_proposal
+                .expect("just checked above; qed");
 
-            // check some global metric for how many proposals are being voted on right now (to limit spam scenarios)
+            // check some global metric for how many proposals are being voted on right now,
+            // to limit spam scenarios
 
             Ok(())
         }
@@ -209,15 +258,19 @@ decl_module! {
 
 decl_storage! {
     trait Store for Module<T: Trait> as Protoshine {
-        /// DEPRECATED UNTIL #7 is implemented and then this will be useful for iterating over all proposals to purge old ones
-        // MembershipApplicationQ get(fn membership_application_q): Vec<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
+        // DEPRECATED UNTIL #7 is implemented and then this will be useful for iterating over
+        // all proposals to purge old ones
+        // MembershipApplicationQ get(fn membership_application_q):
+        //     Vec<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
 
         /// Applications for membership into the organization
-        MembershipApplications get(fn membership_applications): map ProposalIndex => Option<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
+        MembershipApplications get(fn membership_applications): map ProposalIndex =>
+            Option<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
         /// Number of proposals that have been made.
         MembershipApplicationCount get(fn membership_application_count): ProposalIndex;
         /// Membership proposal voting state
-        MembershipVotes get(fn membership_votes): map ProposalIndex => Option<MembershipVote<T::AccountId>>;
+        MembershipVotes get(fn membership_votes):
+            map ProposalIndex => Option<MembershipVote<T::AccountId>>;
         /// Membership proposal indices that have been approved but not yet absorbed.
         MembershipApprovals get(fn membership_approvals): Vec<ProposalIndex>;
 
@@ -225,11 +278,14 @@ decl_storage! {
         Members get(fn members): Vec<T::AccountId>;
         /// Should be changed to `bank_accounts` when we scale this logic for sunshine
         BankAccount get(fn bank_account): Bank<T::AccountId>;
-        /// Share amounts maps to (shares_reserved, total_shares) s.t. shares_reserved are reserved for votes or sponsorships
+        /// Share amounts maps to (shares_reserved, total_shares) s.t. shares_reserved are reserved
+        /// for votes or sponsorships
         MembershipShares get(fn membership_shares): map T::AccountId => Option<(Shares, Shares)>;
         /// Sponsorships, votes and all other outstanding signalling by members
-        /// - This should be made into a more descriptive collateralization struct to enable selective rehypothecation for certain internal actions (like sponsorships sometimes)
-        OutstandingMemberSignals get(fn outstanding_member_signals): map T::AccountId => Option<Vec<(ProposalIndex, Shares)>>;
+        /// - This should be made into a more descriptive collateralization struct to enable
+        ///   selective rehypothecation for certain internal actions (like sponsorships sometimes)
+        OutstandingMemberSignals get(fn outstanding_member_signals):
+            map T::AccountId => Option<Vec<(ProposalIndex, Shares)>>;
     }
     add_extra_genesis {
         build(|_config| {
@@ -243,16 +299,17 @@ decl_storage! {
 }
 
 decl_event!(
-	pub enum Event<T>
-	where
-		Balance = BalanceOf<T>,
+    pub enum Event<T>
+    where
+        Balance = BalanceOf<T>,
         <T as frame_system::Trait>::BlockNumber,
-	{
-		MembershipApplicationProposed(ProposalIndex, Balance, Shares, BlockNumber),
-		/// An application was sponsored by a member on-chain with some of their `Shares` at least equal to the `sponsor_quota` (metaparameter)
-        /// (index of proposal, sponsor quota for sponsorship, stake promised, shares requested)
+    {
+        MembershipApplicationProposed(ProposalIndex, Balance, Shares, BlockNumber),
+	/// An application was sponsored by a member on-chain with some of their `Shares` at least equal
+	/// to the `sponsor_quota` (metaparameter).
+	/// (index of proposal, sponsor quota for sponsorship, stake promised, shares requested)
         MembershipApplicationSponsored(ProposalIndex, Shares, Balance, Shares),
-	}
+    }
 );
 
 decl_error! {
@@ -261,7 +318,8 @@ decl_error! {
     pub enum Error for Module<T: Trait> {
         /// Not a member of the collective for which the runtime method is permissioned
         NotAMember,
-        /// Poorly formed membership application because stake_promised <= shares_requested or stake_promised == 0
+        /// Poorly formed membership application because stake_promised <= shares_requested or
+        /// stake_promised == 0
         InvalidMembershipApplication,
         /// Applicant can't cover collateral requirement for membership application
         InsufficientMembershipApplicantCollateral,
@@ -269,7 +327,8 @@ decl_error! {
         IndexWithNoAssociatedMembershipProposal,
         /// Required sponsorship bond exceeds upper bound inputted by user
         SponsorBondExceedsExpectations,
-        /// Sponsor doesn't have enough shares to cover sponsor_quota requirement for membership application
+        /// Sponsor doesn't have enough shares to cover sponsor_quota requirement for membership
+        /// application
         InsufficientMembershipSponsorCollateral,
         /// There is no owner of the bank
         NoBankOwner,
@@ -283,7 +342,8 @@ impl<T: Trait> Module<T> {
     }
 
     /// The required application bond for membership
-    /// TODO: change logic herein to calculate bond based on ratio of `stake_promised` to `shares_requested` relative to existing parameterization
+    /// TODO: change logic herein to calculate bond based on ratio of `stake_promised` to
+    /// `shares_requested` relative to existing parameterization
     fn calculate_member_application_bond(
         stake_promised: BalanceOf<T>,
         shares_requested: Shares,
@@ -346,7 +406,8 @@ impl<T: Trait> Module<T> {
     fn bank_balance(bank: Bank<T::AccountId>) -> Result<BalanceOf<T>, Error<T>> {
         let account = bank.account.inner().ok_or(Error::<T>::NoBankOwner)?;
         let balance = T::Currency::free_balance(&account)
-            // TODO: ponder whether this should be here (not if I don't follow the same existential deposit system as polkadot...)
+            // TODO: ponder whether this should be here (not if I don't follow the same existential
+            // deposit system as polkadot...)
             // Must never be less than 0 but better be safe.
             .saturating_sub(T::Currency::minimum_balance());
         Ok(balance)
@@ -354,14 +415,16 @@ impl<T: Trait> Module<T> {
 
     /// Calculate the shares to capital ratio
     /// TODO: is this type conversion safe?
-    /// ...I just want to use `Permill::from_rational_approximation` which requires inputs two of the same type
+    /// ...I just want to use `Permill::from_rational_approximation` which requires inputs two of
+    /// the same type
     pub fn shares_to_capital_ratio(shares: Shares, capital: BalanceOf<T>) -> Permill {
         let shares_as_balance = BalanceOf::<T>::from(shares);
         Permill::from_rational_approximation(shares_as_balance, capital)
     }
 
     /// Ratio of the `bank.balance` to `bank.shares`
-    /// -this value may be interpreted as `currency_per_share` by UIs, but that would assume immediate liquidity which is false
+    /// - this value may be interpreted as `currency_per_share` by UIs, but that would assume
+    /// immediate liquidity which is false
     fn collateralization_ratio(bank: Bank<T::AccountId>) -> Result<Permill, Error<T>> {
         let most_recent_balance = Self::bank_balance(bank.clone())?;
         Ok(Self::shares_to_capital_ratio(
