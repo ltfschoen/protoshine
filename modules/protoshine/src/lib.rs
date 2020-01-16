@@ -7,7 +7,7 @@ mod mock;
 mod tests;
 
 mod bank;
-use bank::{Bank, DEFAULT_ID};
+use bank::{Bank, BANK_ID};
 
 #[cfg(feature = "std")]
 use serde::{Serialize, Deserialize};
@@ -276,6 +276,8 @@ decl_error! {
 		SponsorBondExceedsExpectations,
 		/// Sponsor doesn't have enough shares to cover sponsor_quota requirement for membership application
 		InsufficientMembershipSponsorCollateral,
+		/// There is no owner of the bank
+		NoBankOwner,
 	}
 }
 
@@ -362,16 +364,26 @@ impl<T: Trait> Module<T> {
 
 	// -- MAKE BELOW METHODS SPECIFIC TO SOME TRAIT `impl BANKACCOUNT<T::ACCOUNTID> for Module<T>` --
 	pub fn account_id() -> T::AccountId {
-		DEFAULT_ID.into_account()
+		BANK_ID.into_account()
 	}
 
 	/// Return the amount in the bank (in T::Currency denomination)
-	fn bank_balance(bank_account: &T::AccountId) -> BalanceOf<T> {
-		T::Currency::free_balance(bank_account)
-			// TODO: ponder whether this should be here (not if I don't follow the same existential deposit system as polkadot...)
-			// Must never be less than 0 but better be safe.
-			.saturating_sub(T::Currency::minimum_balance())
+	fn bank_balance(bank: Bank<T::AccountId>) -> Result<BalanceOf<T>, Error<T>> {
+		let account = bank.account.inner().ok_or(Error::<T>::NoBankOwner)?;
+		let balance = T::Currency::free_balance(&account)
+						// TODO: ponder whether this should be here (not if I don't follow the same existential deposit system as polkadot...)
+						// Must never be less than 0 but better be safe.
+						.saturating_sub(T::Currency::minimum_balance());
+		Ok(balance)
+	}
+
+	/// Ratio of the `bank.balance` to `bank.shares`
+	/// -this value may be interpreted as `currency_per_share` by UIs, but that would assume immediate liquidity which is false
+	fn collateralization_ratio(bank: Bank<T::AccountId>) -> Result<Permill, Error<T>> {
+		let most_recent_balance = Self::bank_balance(bank.clone())?;
+		let share_count = BalanceOf::<T>::from(bank.shares);
+		// TODO: #make_issue for calculating this?
+		let ratio = Permill::from_rational_approximation(most_recent_balance, share_count);
+		Ok(ratio)
 	}
 }
-
-// mocking and testing in a different file
