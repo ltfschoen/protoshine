@@ -10,17 +10,13 @@ mod bank;
 use bank::{Bank, BANK_ID};
 
 use codec::{Decode, Encode};
-use frame_support::traits::{
-    Currency, ExistenceRequirement, Get, Imbalance, OnUnbalanced, ReservableCurrency,
-    WithdrawReason,
-};
-use frame_support::weights::SimpleDispatchInfo;
-use frame_support::{decl_error, decl_event, decl_module, decl_storage, ensure, print};
+use frame_support::traits::{Currency, Get, ReservableCurrency};
+use frame_support::{decl_error, decl_event, decl_module, decl_storage, ensure};
 use frame_system::{self as system, ensure_signed};
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_runtime::traits::{AccountIdConversion, EnsureOrigin, Saturating, StaticLookup, Zero};
-use sp_runtime::{DispatchResult, ModuleId, Permill, RuntimeDebug};
+use sp_runtime::traits::{AccountIdConversion, Saturating};
+use sp_runtime::{DispatchResult, Permill, RuntimeDebug};
 use sp_std::prelude::*;
 
 type ProposalIndex = u32;
@@ -120,7 +116,7 @@ decl_module! {
             let shares_as_balance = BalanceOf::<T>::from(shares_requested);
             ensure!(stake_promised > T::Currency::minimum_balance() && stake_promised > shares_as_balance, Error::<T>::InvalidMembershipApplication);
 
-            let collateral = Self::calculate_member_application_bond(stake_promised.clone(), shares_requested.clone())?;
+            let collateral = Self::calculate_member_application_bond(stake_promised, shares_requested)?;
             T::Currency::reserve(&applicant, collateral)
                 .map_err(|_| Error::<T>::InsufficientMembershipApplicantCollateral)?;
             let c = Self::membership_application_count() + 1;
@@ -128,7 +124,7 @@ decl_module! {
             let now = <system::Module<T>>::block_number();
             let membership_app = MembershipProposal {
                 index: c,
-                who: applicant.clone(),
+                who: applicant,
                 stake_promised,
                 shares_requested,
                 stage: ProposalStage::Application,
@@ -158,7 +154,7 @@ decl_module! {
             let membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
 
             // (2) should be calculated by UI ahead of time and calculated, but this structure fosters dynamic collateral pricing
-            let sponsor_bond = Self::calculate_membership_sponsor_bond(membership_proposal.stake_promised.clone(), membership_proposal.shares_requested.clone())?;
+            let sponsor_bond = Self::calculate_membership_sponsor_bond(membership_proposal.stake_promised, membership_proposal.shares_requested)?;
 
             // (3) check if the sponsor has enough to afford the sponsor_bond
             let (reserved_shares, total_shares) = <MembershipShares<T>>::get(&sponsor).expect("invariant i: all members must have some shares and therefore some item in the shares map");
@@ -178,7 +174,7 @@ decl_module! {
                 if let Some(mut signals) = wrapped_member_signals {
                     // TODO: replace with `insert` because `mutate` this duplicates the first call to this storage item (`get`)
                     // - `insert` isn't working instead because of some `EncodeLike` error
-                    <OutstandingMemberSignals<T>>::mutate(&sponsor, |s| signals.push(new_item));
+                    <OutstandingMemberSignals<T>>::mutate(&sponsor, |_| signals.push(new_item));
                 }
             }
             <MembershipShares<T>>::insert(&sponsor, (new_reserved, total_shares));
@@ -196,13 +192,13 @@ decl_module! {
             Ok(())
         }
 
-        fn vote_on_membership(origin, index: ProposalIndex, direction: bool, magnitude: Shares) -> DispatchResult {
+        fn vote_on_membership(origin, index: ProposalIndex, _direction: bool, _magnitude: Shares) -> DispatchResult {
             let voter = ensure_signed(origin)?;
             ensure!(Self::is_member(&voter), Error::<T>::NotAMember);
 
             let wrapped_membership_proposal = <MembershipApplications<T>>::get(index);
             ensure!(wrapped_membership_proposal.is_some(), Error::<T>::IndexWithNoAssociatedMembershipProposal);
-            let membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
+            let _membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
 
             // check some global metric for how many proposals are being voted on right now (to limit spam scenarios)
 

@@ -1,5 +1,4 @@
 use codec::FullCodec;
-use frame_support::traits::ReservableCurrency;
 use sp_runtime::{
     traits::{MaybeSerializeDeserialize, SimpleArithmetic},
     Permill,
@@ -30,8 +29,8 @@ impl Threshold for _Majority {
     const THRESHOLD: Permill = Permill::from_percent(51);
 }
 /// Requires 2/3x + 1 shares in favor for x shares that voted
-pub struct _BFT_SuperMajority;
-impl Threshold for _BFT_SuperMajority {
+pub struct _BftSuperMajority;
+impl Threshold for _BftSuperMajority {
     const THRESHOLD: Permill = Permill::from_percent(67);
 }
 /// Requires all shares that voted to be in favor
