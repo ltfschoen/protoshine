@@ -5,7 +5,9 @@ use super::*;
 use frame_support::{assert_noop, assert_ok, impl_outer_origin, parameter_types, weights::Weight};
 use sp_core::H256;
 use sp_runtime::{
-    traits::{BlakeTwo256, IdentityLookup}, testing::Header, Perbill,
+    testing::Header,
+    traits::{BlakeTwo256, IdentityLookup},
+    Perbill,
 };
 
 impl_outer_origin! {
@@ -76,13 +78,19 @@ type Balances = pallet_balances::Module<Test>;
 type Protoshine = Module<Test>;
 
 fn new_test_ext() -> sp_io::TestExternalities {
-    let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
-    pallet_balances::GenesisConfig::<Test>{
+    let mut t = frame_system::GenesisConfig::default()
+        .build_storage::<Test>()
+        .unwrap();
+    pallet_balances::GenesisConfig::<Test> {
         // Total issuance will be 200 with treasury account initialized at ED.
         balances: vec![(0, 100), (1, 98), (2, 1)],
         vesting: vec![],
-    }.assimilate_storage(&mut t).unwrap();
-    GenesisConfig::default().assimilate_storage::<Test>(&mut t).unwrap();
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+    GenesisConfig::default()
+        .assimilate_storage::<Test>(&mut t)
+        .unwrap();
     t.into()
 }
 
@@ -93,4 +101,3 @@ fn genesis_config_works() {
         assert_eq!(Protoshine::membership_application_count(), 0);
     });
 }
-

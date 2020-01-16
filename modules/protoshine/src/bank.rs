@@ -1,11 +1,11 @@
 use super::*;
 
+use codec::{Decode, Encode};
 #[cfg(feature = "std")]
-use serde::{Serialize, Deserialize};
-use sp_std::prelude::*;
-use codec::{Encode, Decode};
-use sp_runtime::{Permill, RuntimeDebug, ModuleId};
+use serde::{Deserialize, Serialize};
 use signal::ShareBank;
+use sp_runtime::{ModuleId, Permill, RuntimeDebug};
+use sp_std::prelude::*;
 
 /// Single bank owner (for now)
 pub const BANK_ID: ModuleId = ModuleId(*b"protoshi");
@@ -15,20 +15,20 @@ pub const BANK_ID: ModuleId = ModuleId(*b"protoshi");
 /// Owner of an bank
 /// - eventually should add multiple `AccountId`s
 pub enum Owner<AccountId> {
-	/// No owner.
-	None,
-	/// Owned by an AccountId
+    /// No owner.
+    None,
+    /// Owned by an AccountId
     Owned(AccountId),
 }
 
 impl<AccountId> Owner<AccountId> {
-	pub fn inner(self) -> Option<AccountId> {
-		if let Owner::Owned(account) = self {
-			Some(account)
-		} else {
-			None
-		}
-	}
+    pub fn inner(self) -> Option<AccountId> {
+        if let Owner::Owned(account) = self {
+            Some(account)
+        } else {
+            None
+        }
+    }
 }
 
 /// Bank Object
@@ -39,50 +39,50 @@ impl<AccountId> Owner<AccountId> {
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
 /// There's only one bank instance now but add a `group_id` field...
-pub struct Bank<AccountId>  {
+pub struct Bank<AccountId> {
     /// The account_id represented by the bank
     /// TODO: multi-account management and/or rotating accounts (do keys already rotate?)
-	pub account: Owner<AccountId>,
-	/// Total number of shares backing for an org
-	pub shares: Shares,
+    pub account: Owner<AccountId>,
+    /// Total number of shares backing for an org
+    pub shares: Shares,
 }
 
 // Default Bank, never use these parameters, just here to store as storage value
 impl<AccountId> Default for Bank<AccountId> {
-	fn default() -> Self {
-		Self {
-			account: Owner::None,
-			shares: 0,
-		}
-	}
+    fn default() -> Self {
+        Self {
+            account: Owner::None,
+            shares: 0,
+        }
+    }
 }
 
 /// WARNING: these methods only work if we restrict where this can be called in the runtime to places that
-/// satisfy constraints such as 
+/// satisfy constraints such as
 /// - `new` cannot be called unless the Owner::Address(AccountId) stakes some minimum amount of capital; this is a runtime method's constraints
 impl<AccountId> Bank<AccountId> {
-	fn new(initial_shares: Shares, owner: Owner<AccountId>) -> Bank<AccountId> {
-		Self {
-			account: owner,
-			shares: initial_shares,
-		}
-	}
+    fn new(initial_shares: Shares, owner: Owner<AccountId>) -> Bank<AccountId> {
+        Self {
+            account: owner,
+            shares: initial_shares,
+        }
+    }
 }
 
 /// All access to shares goes through these commands
 /// => all calls must be from authorized callers with prerequisite conditions satisfied
 /// ( these methods not be callable from _anywhere_ )
 impl<AccountId> ShareBank for Bank<AccountId> {
-	/// TODO: build Shares type like other generic asset impls?
-	type Shares = u32;
+    /// TODO: build Shares type like other generic asset impls?
+    type Shares = u32;
 
-	fn issue(&mut self, amount: Self::Shares) -> Self::Shares {
-		self.shares += amount;
-		self.shares
-	}
+    fn issue(&mut self, amount: Self::Shares) -> Self::Shares {
+        self.shares += amount;
+        self.shares
+    }
 
-	fn buyback(&mut self, amount: Self::Shares) -> Self::Shares {
-		self.shares -= amount;
-		self.shares
-	}
+    fn buyback(&mut self, amount: Self::Shares) -> Self::Shares {
+        self.shares -= amount;
+        self.shares
+    }
 }
