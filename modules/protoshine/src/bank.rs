@@ -47,7 +47,7 @@ pub struct Bank<AccountId>  {
 	pub shares: Shares,
 }
 
-// Default Bank, never use these parameters
+// Default Bank, never use these parameters, just here to store as storage value
 impl<AccountId> Default for Bank<AccountId> {
 	fn default() -> Self {
 		Self {
@@ -69,6 +69,9 @@ impl<AccountId> Bank<AccountId> {
 	}
 }
 
+/// All access to shares goes through these commands
+/// => all calls must be from authorized callers with prerequisite conditions satisfied
+/// ( these methods not be callable from _anywhere_ )
 impl<AccountId> ShareBank for Bank<AccountId> {
 	/// TODO: build Shares type like other generic asset impls?
 	type Shares = u32;
@@ -83,13 +86,3 @@ impl<AccountId> ShareBank for Bank<AccountId> {
 		self.shares
 	}
 }
-
-// impl<BalanceOf> Bank<BalanceOf> {
-// 	// can I return module errors here?
-// 	fn fun_init(balance: BalanceOf, shares_to_issue: Shares) -> Result<Bank<BalanceOf>, Error> {
-// 		// stake balance
-// 		// generate account_id
-//      // move balance into account
-//      // issue shares and associate shares with this group's identifier
-// 	}
-// }

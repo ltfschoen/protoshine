@@ -80,14 +80,11 @@ pub trait Trait: frame_system::Trait {
 	/// The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
     
-    /// Percentage of `stake_promised` that is required for membership application's proposal bond
-    /// - accepted gets it returned, rejected does not
-    /// TODO: in the future, make this more accessible because this values security over accessibility
-	type MembershipProposalBond: Get<Permill>;
-
     /// Minimum amount of funds that should be placed in a deposit for making a membership proposal
-    /// - once again, for security reasons
-    type MembershipProposalBondMinimum: Get<BalanceOf<Self>>;
+	type MembershipProposalBond: Get<BalanceOf<Self>>;
+
+	/// Minimum amount of shares that should be locked for sponsoring a membership proposal
+	type MembershipSponsorBond: Get<Shares>;
     
     //// Maximum percentage of existing shares that can be issued in a BatchPeriod
     type MaximumShareIssuance: Get<Permill>;
@@ -101,12 +98,11 @@ decl_module! {
 		type Error = Error<T>;
 		fn deposit_event() = default;
 
-		/// Fraction of a proposal's value that should be bonded in order to place the proposal.
-		/// An accepted proposal gets these back. A rejected proposal does not.
-		const MembershipProposalBond: Permill = T::MembershipProposalBond::get();
+		/// Minimum proposal bond
+		const MembershipProposalBond: BalanceOf<T> = T::MembershipProposalBond::get();
 
-		/// Minimum amount of funds that should be placed in a deposit for making a proposal.
-        const MembershipProposalBondMinimum: BalanceOf<T> = T::MembershipProposalBondMinimum::get();
+		/// Minimum sponsor bond
+		const MembershipSponsorBond: Shares = T::MembershipSponsorBond::get();
         
         /// Maximum number of shares issued in a batch period
         const MaximumShareIssuance: Permill = T::MaximumShareIssuance::get();
@@ -119,10 +115,11 @@ decl_module! {
 		/// - 
 		fn membership_application(origin, stake_promised: BalanceOf<T>, shares_requested: Shares) -> DispatchResult {
             let applicant = ensure_signed(origin)?;
-            // don't restrict to non-members because this doubles for members requesting new share amounts
-            // - they can apply for a grant to avoid collateral requirements (which should be provided somehow)
+			// these are the requirements for MEMBERSHIP applications (grant applications are different, unlike in moloch)
+			let shares_as_balance = BalanceOf::<T>::from(shares_requested);
+			ensure!(stake_promised > T::Currency::minimum_balance() && stake_promised > shares_as_balance, Error::<T>::InvalidMembershipApplication);
 
-			let collateral = Self::calculate_member_application_bond(stake_promised.clone(), shares_requested.clone());
+			let collateral = Self::calculate_member_application_bond(stake_promised.clone(), shares_requested.clone())?;
 			T::Currency::reserve(&applicant, collateral)
 				.map_err(|_| Error::<T>::InsufficientMembershipApplicantCollateral)?;
 			let c = Self::membership_application_count() + 1;
@@ -150,7 +147,7 @@ decl_module! {
 		///		- any punishment if the sponsored proposal is rejected?
 		/// - note that someone could sponsor their own application
 		/// - (1), (2) and (3) should be reordered s.t. the first check panics the most often, thereby limiting computational costs in the event of panics
-		fn sponsor_membership_application(origin, max_share_bond: Shares, index: ProposalIndex) -> DispatchResult {
+		fn sponsor_membership_application(origin, index: ProposalIndex) -> DispatchResult {
 			let sponsor = ensure_signed(origin)?;
 			ensure!(Self::is_member(&sponsor), Error::<T>::NotAMember);
 
@@ -160,8 +157,7 @@ decl_module! {
 			let membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
 
 			// (2) should be calculated by UI ahead of time and calculated, but this structure fosters dynamic collateral pricing
-			let sponsor_bond = Self::calculate_membership_sponsor_bond(membership_proposal.stake_promised.clone(), membership_proposal.shares_requested.clone());
-			ensure!(sponsor_bond <= max_share_bond, Error::<T>::SponsorBondExceedsExpectations);
+			let sponsor_bond = Self::calculate_membership_sponsor_bond(membership_proposal.stake_promised.clone(), membership_proposal.shares_requested.clone())?;
 
 			// (3) check if the sponsor has enough to afford the sponsor_bond
 			let (reserved_shares, total_shares) = <MembershipShares<T>>::get(&sponsor).expect("invariant i: all members must have some shares and therefore some item in the shares map");
@@ -268,6 +264,8 @@ decl_error! {
 	pub enum Error for Module<T: Trait> {
 		/// Not a member of the collective for which the runtime method is permissioned
 		NotAMember,
+		/// Poorly formed membership application because stake_promised <= shares_requested or stake_promised == 0
+		InvalidMembershipApplication,
 		/// Applicant can't cover collateral requirement for membership application
 		InsufficientMembershipApplicantCollateral,
 		/// Index doesn't haven associated membership proposal
@@ -289,78 +287,48 @@ impl<T: Trait> Module<T> {
 
 	/// The required application bond for membership
 	/// TODO: change logic herein to calculate bond based on ratio of `stake_promised` to `shares_requested` relative to existing parameterization
-	fn calculate_member_application_bond(stake_promised: BalanceOf<T>, shares_requested: Shares) -> BalanceOf<T> {
-		// calculate ratio of shares_requested to stake_promised
-		// compare the ratio of the applicant to the ratio of the current group
+	fn calculate_member_application_bond(stake_promised: BalanceOf<T>, shares_requested: Shares) -> Result<BalanceOf<T>, Error<T>> {
+		// get proposed membership ratio
+		let ratio: Permill = Self::shares_to_capital_ratio(shares_requested, stake_promised);
 
-		// old implementation - to be deleted
-		T::MembershipProposalBondMinimum::get().max(T::MembershipProposalBond::get() * stake_promised)
+		// call the bank
+		let bank = Self::bank_account();
+		// check the bank's ratio (TODO: allow banks to embed their criteria)
+		let banks_ratio: Permill = Self::collateralization_ratio(bank)?;
+
+		// compare ratio and multiply proposal bond (much room for improvement here)
+		match (banks_ratio, ratio) {
+			// minimum bond amount because improves share value if accepted
+			(banks_ratio, ratio) if ratio > banks_ratio => Ok(T::MembershipProposalBond::get()),
+			// standard bond amount because no changes to share value if accepted
+			(banks_ratio, ratio) if ratio == banks_ratio => Ok(T::MembershipProposalBond::get() * 2.into()),
+			// dilutive proposal because decreases share value if accepted
+			_ => Ok(T::MembershipProposalBond::get() * 4.into()),
+		}
 	}
 
 	/// The required sponsorship bond for membership proposals
-	/// TODO: "" same as above
-	fn calculate_membership_sponsor_bond(stake_promised: BalanceOf<T>, shares_requested: Shares) -> Shares {
-		shares_requested
+	/// TODO: abstract method body into an outside method called in both of these methods
+	/// - make an issue
+	fn calculate_membership_sponsor_bond(stake_promised: BalanceOf<T>, shares_requested: Shares) -> Result<Shares, Error<T>> {
+		// get proposed membership ratio
+		let ratio: Permill = Self::shares_to_capital_ratio(shares_requested, stake_promised);
+
+		// call the bank
+		let bank = Self::bank_account();
+		// check the bank's ratio (TODO: allow banks to embed their criteria)
+		let banks_ratio: Permill = Self::collateralization_ratio(bank)?;
+
+		// compare ratio and multiply proposal bond (much room for improvement here)
+		match (banks_ratio, ratio) {
+			// minimum bond amount because improves share value if accepted
+			(banks_ratio, ratio) if ratio > banks_ratio => Ok(T::MembershipSponsorBond::get()),
+			// standard bond amount because no changes to share value if accepted
+			(banks_ratio, ratio) if ratio == banks_ratio => Ok(T::MembershipSponsorBond::get() * 2u32),
+			// dilutive proposal because decreases share value if accepted
+			_ => Ok(T::MembershipSponsorBond::get() * 4u32),
+		}
 	}
-
-// 	// Spend some money!
-// 	// fn spend_funds() {
-// 		// let mut budget_remaining = Self::pot();
-// 		// Self::deposit_event(RawEvent::Spending(budget_remaining));
-
-// 		// let mut missed_any = false;
-// 		// let mut imbalance = <PositiveImbalanceOf<T>>::zero();
-// 		// Approvals::mutate(|v| {
-// 		// 	v.retain(|&index| {
-// 		// 		// Should always be true, but shouldn't panic if false or we're screwed.
-// 		// 		if let Some(p) = Self::proposals(index) {
-// 		// 			if p.value <= budget_remaining {
-// 		// 				budget_remaining -= p.value;
-// 		// 				<Proposals<T>>::remove(index);
-
-// 		// 				// return their deposit.
-// 		// 				let _ = T::Currency::unreserve(&p.proposer, p.bond);
-
-// 		// 				// provide the allocation.
-// 		// 				imbalance.subsume(T::Currency::deposit_creating(&p.beneficiary, p.value));
-
-// 		// 				Self::deposit_event(RawEvent::Awarded(index, p.value, p.beneficiary));
-// 		// 				false
-// 		// 			} else {
-// 		// 				missed_any = true;
-// 		// 				true
-// 		// 			}
-// 		// 		} else {
-// 		// 			false
-// 		// 		}
-// 		// 	});
-// 		// });
-
-// 		// if !missed_any {
-// 		// 	// burn some proportion of the remaining budget if we run a surplus.
-// 		// 	let burn = (T::Burn::get() * budget_remaining).min(budget_remaining);
-// 		// 	budget_remaining -= burn;
-// 		// 	imbalance.subsume(T::Currency::burn(burn));
-// 		// 	Self::deposit_event(RawEvent::Burnt(burn))
-// 		// }
-
-// 		// // Must never be an error, but better to be safe.
-// 		// // proof: budget_remaining is account free balance minus ED;
-// 		// // Thus we can't spend more than account free balance minus ED;
-// 		// // Thus account is kept alive; qed;
-// 		// if let Err(problem) = T::Currency::settle(
-// 		// 	&Self::account_id(),
-// 		// 	imbalance,
-// 		// 	WithdrawReason::Transfer.into(),
-// 		// 	ExistenceRequirement::KeepAlive
-// 		// ) {
-// 		// 	print("Inconsistent state - couldn't settle imbalance for funds spent by treasury");
-// 		// 	// Nothing else to do here.
-// 		// 	drop(problem);
-// 		// }
-
-// 		// Self::deposit_event(RawEvent::Rollover(budget_remaining));
-// 	//}
 
 	// -- MAKE BELOW METHODS SPECIFIC TO SOME TRAIT `impl BANKACCOUNT<T::ACCOUNTID> for Module<T>` --
 	pub fn account_id() -> T::AccountId {
@@ -377,13 +345,18 @@ impl<T: Trait> Module<T> {
 		Ok(balance)
 	}
 
+	/// Calculate the shares to capital ratio
+	/// TODO: is this type conversion safe?
+	/// ...I just want to use `Permill::from_rational_approximation` which requires inputs two of the same type
+	pub fn shares_to_capital_ratio(shares: Shares, capital: BalanceOf<T>) -> Permill {
+		let shares_as_balance = BalanceOf::<T>::from(shares);
+		Permill::from_rational_approximation(shares_as_balance, capital)
+	}
+
 	/// Ratio of the `bank.balance` to `bank.shares`
 	/// -this value may be interpreted as `currency_per_share` by UIs, but that would assume immediate liquidity which is false
 	fn collateralization_ratio(bank: Bank<T::AccountId>) -> Result<Permill, Error<T>> {
 		let most_recent_balance = Self::bank_balance(bank.clone())?;
-		let share_count = BalanceOf::<T>::from(bank.shares);
-		// TODO: #make_issue for calculating this?
-		let ratio = Permill::from_rational_approximation(most_recent_balance, share_count);
-		Ok(ratio)
+		Ok(Self::shares_to_capital_ratio(bank.shares, most_recent_balance))
 	}
 }
