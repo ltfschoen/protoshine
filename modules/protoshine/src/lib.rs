@@ -238,15 +238,15 @@ decl_storage! {
 		/// - This should be made into a more descriptive collateralization struct to enable selective rehypothecation for certain internal actions (like sponsorships sometimes)
 		OutstandingMemberSignals get(fn outstanding_member_signals): map T::AccountId => Option<Vec<(ProposalIndex, Shares)>>;
 	}
-	// add_extra_genesis {
-	// 	build(|_config| {
-	// 		// Create Single Org Account
-	// 		let _ = T::Currency::make_free_balance_be(
-	// 			&<Module<T>>::account_id(),
-	// 			T::Currency::minimum_balance(),
-	// 		);
-	// 	});
-	// }
+	add_extra_genesis {
+		build(|_config| {
+			// Create Single Org Account
+			let _ = T::Currency::make_free_balance_be(
+				&<Module<T>>::account_id(),
+				T::Currency::minimum_balance(),
+			);
+		});
+	}
 }
 
 decl_event!(
