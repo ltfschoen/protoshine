@@ -1,3 +1,4 @@
+#![allow(clippy::string_lit_as_bytes)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(test)]
