@@ -10,18 +10,13 @@ mod bank;
 use bank::{Bank, BANK_ID};
 
 use codec::{Decode, Encode};
-use frame_support::traits::{
-    Currency, ExistenceRequirement, Get, Imbalance, OnUnbalanced, ReservableCurrency,
-    WithdrawReason,
-};
-use frame_support::weights::SimpleDispatchInfo;
-use frame_support::{decl_error, decl_event, decl_module, decl_storage, ensure, print};
+use frame_support::traits::{Currency, Get, ReservableCurrency};
+use frame_support::{decl_error, decl_event, decl_module, decl_storage, ensure};
 use frame_system::{self as system, ensure_signed};
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use signal::Threshold;
-use sp_runtime::traits::{AccountIdConversion, EnsureOrigin, Saturating, StaticLookup, Zero};
-use sp_runtime::{DispatchResult, ModuleId, Permill, RuntimeDebug};
+use sp_runtime::traits::{AccountIdConversion, Saturating};
+use sp_runtime::{DispatchResult, Permill, RuntimeDebug};
 use sp_std::prelude::*;
 
 type ProposalIndex = u32;
@@ -53,7 +48,8 @@ pub struct MembershipProposal<AccountId, BalanceOf, BlockNumber> {
     /// The applicant
     who: AccountId,
     /// The collateral promised and slowly staked over the duration of the proposal process
-    /// TODO: make issue for why this should be made more complex eventually s.t. amount staked only is applied once approved and reserved changes based on prob(passage)
+    /// TODO: make issue for why this should be made more complex eventually s.t. amount staked
+    /// only is applied once approved and reserved changes based on prob(passage)
     stake_promised: BalanceOf,
     /// The reward that the bidder has requested for successfully joining the society.
     shares_requested: Shares,
@@ -155,13 +151,25 @@ decl_module! {
         /// Anyone can apply to exchange shares for capital
         /// - any punishment if the application fails and does this depend on how it fails?
         /// -
-        fn membership_application(origin, stake_promised: BalanceOf<T>, shares_requested: Shares) -> DispatchResult {
+        fn membership_application(
+            origin,
+            stake_promised: BalanceOf<T>,
+            shares_requested: Shares,
+        ) -> DispatchResult {
             let applicant = ensure_signed(origin)?;
-            // these are the requirements for MEMBERSHIP applications (grant applications are different, unlike in moloch)
+            // these are the requirements for MEMBERSHIP applications (grant applications are
+            // different, unlike in moloch)
             let shares_as_balance = BalanceOf::<T>::from(shares_requested);
-            ensure!(stake_promised > T::Currency::minimum_balance() && stake_promised > shares_as_balance, Error::<T>::InvalidMembershipApplication);
+            ensure!(
+                stake_promised > T::Currency::minimum_balance() &&
+                stake_promised > shares_as_balance,
+                Error::<T>::InvalidMembershipApplication,
+            );
 
-            let collateral = Self::calculate_member_application_bond(stake_promised.clone(), shares_requested.clone())?;
+            let collateral = Self::calculate_member_application_bond(
+                stake_promised,
+                shares_requested,
+            )?;
             T::Currency::reserve(&applicant, collateral)
                 .map_err(|_| Error::<T>::InsufficientMembershipApplicantCollateral)?;
             let c = Self::membership_application_count() + 1;
@@ -169,7 +177,7 @@ decl_module! {
             let now = <system::Module<T>>::block_number();
             let membership_app = MembershipProposal {
                 index: c,
-                who: applicant.clone(),
+                who: applicant,
                 stake_promised,
                 shares_requested,
                 stage: ProposalStage::Application,
@@ -415,16 +423,17 @@ decl_storage! {
 }
 
 decl_event!(
-	pub enum Event<T>
-	where
-		Balance = BalanceOf<T>,
+    pub enum Event<T>
+    where
+        Balance = BalanceOf<T>,
         <T as frame_system::Trait>::BlockNumber,
-	{
-		MembershipApplicationProposed(ProposalIndex, Balance, Shares, BlockNumber),
-		/// An application was sponsored by a member on-chain with some of their `Shares` at least equal to the `sponsor_quota` (metaparameter)
-        /// (index of proposal, sponsor quota for sponsorship, stake promised, shares requested)
+    {
+        MembershipApplicationProposed(ProposalIndex, Balance, Shares, BlockNumber),
+	/// An application was sponsored by a member on-chain with some of their `Shares` at least equal
+	/// to the `sponsor_quota` (metaparameter).
+	/// (index of proposal, sponsor quota for sponsorship, stake promised, shares requested)
         MembershipApplicationSponsored(ProposalIndex, Shares, Balance, Shares),
-	}
+    }
 );
 
 decl_error! {
@@ -433,7 +442,8 @@ decl_error! {
     pub enum Error for Module<T: Trait> {
         /// Not a member of the collective for which the runtime method is permissioned
         NotAMember,
-        /// Poorly formed membership application because stake_promised <= shares_requested or stake_promised == 0
+        /// Poorly formed membership application because stake_promised <= shares_requested or
+        /// stake_promised == 0
         InvalidMembershipApplication,
         /// Applicant can't cover collateral requirement for membership application
         InsufficientMembershipApplicantCollateral,
@@ -463,7 +473,8 @@ impl<T: Trait> Module<T> {
     }
 
     /// The required application bond for membership
-    /// TODO: change logic herein to calculate bond based on ratio of `stake_promised` to `shares_requested` relative to existing parameterization
+    /// TODO: change logic herein to calculate bond based on ratio of `stake_promised` to
+    /// `shares_requested` relative to existing parameterization
     fn calculate_member_application_bond(
         stake_promised: BalanceOf<T>,
         shares_requested: Shares,
@@ -526,7 +537,8 @@ impl<T: Trait> Module<T> {
     fn bank_balance(bank: Bank<T::AccountId>) -> Result<BalanceOf<T>, Error<T>> {
         let account = bank.account.inner().ok_or(Error::<T>::NoBankOwner)?;
         let balance = T::Currency::free_balance(&account)
-            // TODO: ponder whether this should be here (not if I don't follow the same existential deposit system as polkadot...)
+            // TODO: ponder whether this should be here (not if I don't follow the same existential
+            // deposit system as polkadot...)
             // Must never be less than 0 but better be safe.
             .saturating_sub(T::Currency::minimum_balance());
         Ok(balance)
@@ -534,14 +546,16 @@ impl<T: Trait> Module<T> {
 
     /// Calculate the shares to capital ratio
     /// TODO: is this type conversion safe?
-    /// ...I just want to use `Permill::from_rational_approximation` which requires inputs two of the same type
+    /// ...I just want to use `Permill::from_rational_approximation` which requires inputs two of
+    /// the same type
     pub fn shares_to_capital_ratio(shares: Shares, capital: BalanceOf<T>) -> Permill {
         let shares_as_balance = BalanceOf::<T>::from(shares);
         Permill::from_rational_approximation(shares_as_balance, capital)
     }
 
     /// Ratio of the `bank.balance` to `bank.shares`
-    /// -this value may be interpreted as `currency_per_share` by UIs, but that would assume immediate liquidity which is false
+    /// - this value may be interpreted as `currency_per_share` by UIs, but that would assume
+    /// immediate liquidity which is false
     fn collateralization_ratio(bank: Bank<T::AccountId>) -> Result<Permill, Error<T>> {
         let most_recent_balance = Self::bank_balance(bank.clone())?;
         Ok(Self::shares_to_capital_ratio(

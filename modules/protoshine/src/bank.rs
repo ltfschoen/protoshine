@@ -61,7 +61,7 @@ impl<AccountId> Default for Bank<AccountId> {
 /// satisfy constraints such as
 /// - `new` cannot be called unless the Owner::Address(AccountId) stakes some minimum amount of capital; this is a runtime method's constraints
 impl<AccountId> Bank<AccountId> {
-    fn new(initial_shares: Shares, owner: Owner<AccountId>) -> Bank<AccountId> {
+    pub fn new(initial_shares: Shares, owner: Owner<AccountId>) -> Bank<AccountId> {
         Self {
             account: owner,
             shares: initial_shares,
