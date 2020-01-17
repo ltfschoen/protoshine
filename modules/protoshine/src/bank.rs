@@ -4,7 +4,7 @@ use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use signal::ShareBank;
-use sp_runtime::{ModuleId, Permill, RuntimeDebug};
+use sp_runtime::{ModuleId, RuntimeDebug};
 use sp_std::prelude::*;
 
 /// Single bank owner (for now)
