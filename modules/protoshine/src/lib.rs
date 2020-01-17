@@ -64,7 +64,8 @@ pub struct MembershipProposal<AccountId, BalanceOf, BlockNumber> {
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
 /// The state of each proposal's ongoing voting
-/// - kept minimal to perform lazy computation to calculate if threshold requirements are met at any time
+/// - kept minimal to perform lazy computation to calculate if threshold requirements
+/// are met at any time
 pub struct MinimalMembershipVoteState {
     /// total shares in favor
     in_favor: Shares,
@@ -105,21 +106,24 @@ pub trait Trait: frame_system::Trait {
     /// The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
 
-    /// Minimum amount of funds that should be placed in a deposit for making a membership proposal
+    /// Minimum amount of funds that should be placed in a deposit for
+    /// making a membership proposal
     type MembershipProposalBond: Get<BalanceOf<Self>>;
 
     /// Minimum amount of shares that should be locked for sponsoring a membership proposal
     type MembershipSponsorBond: Get<Shares>;
 
     /// Uniform voting bond
-    /// TODO: reuse dynamic collateral logic from the two bonds above when further along (see `calculate_bonds`)
+    /// TODO: reuse dynamic collateral logic from the two bonds above
+    /// when further along (see `calculate_bonds`)
     type MembershipVoteBond: Get<Shares>;
 
     //// Maximum percentage of existing shares that can be issued in a BatchPeriod
     type MaximumShareIssuance: Get<Permill>;
 
     /// Minimum threshold to pass membership proposals
-    /// - TODO: should depend on turnout and use `signal::Threshold` to foster modular runtime configuration
+    /// - TODO: should depend on turnout and use `signal::Threshold` to foster
+    ///  modular runtime configuration
     type MembershipConsensusThreshold: Get<Permill>;
 
     /// Batched membership changes
@@ -158,8 +162,8 @@ decl_module! {
             shares_requested: Shares,
         ) -> DispatchResult {
             let applicant = ensure_signed(origin)?;
-            // these are the requirements for MEMBERSHIP applications (grant applications are
-            // different, unlike in moloch)
+            // these are the requirements for MEMBERSHIP applications
+            // (grant applications are different, unlike in moloch)
             let shares_as_balance = BalanceOf::<T>::from(shares_requested);
             ensure!(
                 stake_promised > T::Currency::minimum_balance() &&
@@ -188,16 +192,20 @@ decl_module! {
             // <MembershipApplicationQ<T>>::mutate(|v| v.push(membership_app.clone()));
             <MembershipApplications<T>>::insert(c, membership_app);
 
-            Self::deposit_event(RawEvent::MembershipApplicationProposed(c, stake_promised, shares_requested, now));
+            Self::deposit_event(RawEvent::MembershipApplicationProposed(
+                c, stake_promised, shares_requested, now)
+            );
             Ok(())
         }
 
         /// Members escalate applications to be voted on
-        /// - UI should make sure the member knows how many shares they are used to sponsor and the associated risk
+        /// - UI should make sure the member knows how many shares they are used
+        /// to sponsor and the associated risk
         ///		- `max_share_bond` exists so that UI's estimate isn't too wrong and it fucks over sponsors
         ///		- any punishment if the sponsored proposal is rejected?
         /// - note that someone could sponsor their own application
-        /// - (1), (2) and (3) should be reordered s.t. the first check panics the most often, thereby limiting computational costs in the event of panics
+        /// - (1), (2) and (3) should be reordered s.t. the first check panics the most often, thereby
+        /// limiting computational costs in the event of panics
         fn sponsor_membership_application(origin, index: ProposalIndex) -> DispatchResult {
             let sponsor = ensure_signed(origin)?;
             ensure!(Self::is_member(&sponsor), Error::<T>::NotAMember);
@@ -208,17 +216,23 @@ decl_module! {
             let membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
             ensure!(membership_proposal.stage == ProposalStage::Application, Error::<T>::RequestInWrongStage);
 
-            // (2) should be calculated by UI ahead of time and calculated, but this structure fosters dynamic collateral pricing
-            let sponsor_bond = Self::calculate_membership_sponsor_bond(membership_proposal.stake_promised, membership_proposal.shares_requested)?;
+            // (2) should be calculated by UI ahead of time and calculated, but
+            // this structure fosters dynamic collateral pricing
+            let sponsor_bond = Self::calculate_membership_sponsor_bond(
+                membership_proposal.stake_promised, membership_proposal.shares_requested
+            )?;
 
             // (3) check if the sponsor has enough to afford the sponsor_bond
             let (reserved_shares, total_shares) = <MembershipShares<T>>::get(&sponsor).expect("invariant i: all members must have some shares and therefore some item in the shares map");
             // TODO: add overflow check here and resolution
             let new_reserved = reserved_shares + sponsor_bond;
             // check if the sponsor has enough free shares to afford the sponsor_bond
-            ensure!(total_shares >= new_reserved, Error::<T>::InsufficientMembershipSponsorCollateral);
+            ensure!(
+                total_shares >= new_reserved, Error::<T>::InsufficientMembershipSponsorCollateral
+            );
 
-            /// Sponsorship is default treated like a vote in the amount of `sponsor_bond` (up for discussion)
+            /// Sponsorship is default treated like a vote in the amount of
+            /// `sponsor_bond` (up for discussion)
             let sponsor_vote_in_favor = Vote::InFavor(sponsor_bond);
             <VotesByMembers<T>>::insert(index, &sponsor, sponsor_vote_in_favor);
             /// Share reservation data is updated in `MembershipShares` map
@@ -229,11 +243,21 @@ decl_module! {
                 stage: ProposalStage::Voting,
                 ..membership_proposal
             };
-            <MembershipApplications<T>>::insert(membership_proposal.index, voting_membership_proposal);
+            <MembershipApplications<T>>::insert(
+                membership_proposal.index, voting_membership_proposal
+            );
 
-            // notably, sponsorship is separate from voting (this is a choice we make on behalf of users and can adjust based on user research, which is more intuitive)
+            // notably, sponsorship is separate from voting (this is a choice
+            // we make on behalf of users and can adjust based on user research)
 
-            Self::deposit_event(RawEvent::MembershipApplicationSponsored(index, sponsor_bond, membership_proposal.stake_promised, membership_proposal.shares_requested));
+            Self::deposit_event(
+                RawEvent::MembershipApplicationSponsored(
+                    index,
+                    sponsor_bond,
+                    membership_proposal.stake_promised,
+                    membership_proposal.shares_requested
+                )
+            );
             Ok(())
         }
 
@@ -244,14 +268,21 @@ decl_module! {
             ensure!(Self::is_member(&voter), Error::<T>::NotAMember);
 
             let wrapped_membership_proposal = <MembershipApplications<T>>::get(index);
-            ensure!(wrapped_membership_proposal.is_some(), Error::<T>::IndexWithNoAssociatedMembershipProposal);
+            ensure!(
+                wrapped_membership_proposal.is_some(),
+                Error::<T>::IndexWithNoAssociatedMembershipProposal
+            );
             let membership_proposal = wrapped_membership_proposal.expect("just checked inner existence above; qed");
-            ensure!(membership_proposal.stage == ProposalStage::Voting, Error::<T>::RequestInWrongStage);
+            ensure!(
+                membership_proposal.stage == ProposalStage::Voting, Error::<T>::RequestInWrongStage
+            );
 
             let direction = vote.is_in_favor();
             let magnitude = vote.inner();
             // the vote bond's is `T::MembershipVoteBond` but it reserves the magnitude of the vote (=> the minimum vote amount is `T::MembershipVoteBond`)
-            ensure!(magnitude >= T::MembershipVoteBond::get(), Error::<T>::VoteMagnitudeBelowMinimumVoteBond);
+            ensure!(
+                magnitude >= T::MembershipVoteBond::get(), Error::<T>::VoteMagnitudeBelowMinimumVoteBond
+            );
 
             // Get Membership Voting State to verify valid transition before updating it
             let wrapped_vote_by_member = <VotesByMembers<T>>::get(index, &voter);
@@ -259,7 +290,8 @@ decl_module! {
             // check if member can afford vote
             let (reserved_shares, total_shares) = <MembershipShares<T>>::get(&voter).expect("invariant i: all members must have some shares and therefore some item in the shares map");
             // should have been initialized upon sponsorship
-            let old_vote_state = <MembershipVoteStates>::get(index).ok_or(Error::<T>::VoteStateUninitialized)?;
+            let old_vote_state = <MembershipVoteStates>::get(index).
+                                    ok_or(Error::<T>::VoteStateUninitialized)?;
 
             let (mut new, mut same, mut different) = (false, false, false);
             let mut new_reserved = reserved_shares;
@@ -275,19 +307,23 @@ decl_module! {
                 // (2) vote exists and it's the same direction as the new vote
                 Some(Vote::InFavor(shares)) if direction => {
                     same = true;
-                    // must aggregate here because we don't have access to shares outside of this match statement
+                    // must aggregate here because we don't have access
+                    // to shares outside of this match statement
                     new_magnitude += shares;
                 },
                 Some(Vote::Against(shares)) if !direction => {
                     same = true;
-                    // must aggregate here because we don't have access to shares outside of this match statement
+                    // must aggregate here because we don't have access to shares
+                    // outside of this match statement
                     new_magnitude += shares;
                 },
                 // (3)vote exists and it's the opposite direction as the new vote
-                /// (Some(Vote::InFavor(shares)) if !direction || (2) Some(Vote::Against(shares)) if direction)
+                // (Some(Vote::InFavor(shares)) if !direction || (
+                // Some(Vote::Against(shares)) if direction)
                 Some(Vote::InFavor(shares)) if !direction => {
                     different = true;
-                    // increment negative shares imbalance (and decrease from <MembershipVote<T>>::get(account).in_favor)
+                    // increment negative shares imbalance
+                    // (and decrease from <MembershipVote<T>>::get(account).in_favor)
                     // false for negative sign (negative share imbalance)
                     shares_imbalance_sign = false;
                     // add the shares amount to the imbalance
@@ -303,7 +339,8 @@ decl_module! {
                 },
                 Some(Vote::Against(shares)) if direction => {
                     different = true;
-                    // increment negative shares imbalance (and decrease from <MembershipVote<T>>::get(account).in_favor)
+                    // increment negative shares imbalance
+                    // (and decrease from <MembershipVote<T>>::get(account).in_favor)
                     // true for positive sign (positive share imbalance)
                     shares_imbalance_sign = true;
                     // add the shares amount to the imbalance
@@ -331,12 +368,15 @@ decl_module! {
                     new_vote_state.turnout += magnitude;
                 } // TODO: update storgae item!
                 // check if the sponsor has enough free shares to afford the sponsor_bond
-                ensure!(total_shares >= new_reserved, Error::<T>::InsufficientMembershipVoteCollateral);
+                ensure!(
+                    total_shares >= new_reserved, Error::<T>::InsufficientMembershipVoteCollateral
+                );
                 <VotesByMembers<T>>::insert(index, &voter, vote.clone());
                 <MembershipShares<T>>::insert(&voter, (new_reserved, total_shares));
             }
             if same {
-                // there is an existing vote in the same direction (so aggregate new_magnitude and old_magnitude in match statement)
+                // there is an existing vote in the same direction (so aggregate
+                // new_magnitude and old_magnitude in match statement)
                 new_reserved += magnitude;
                 let new_vote = if direction {
                     new_vote_state.in_favor += magnitude;
@@ -347,7 +387,9 @@ decl_module! {
                     Vote::Against(new_magnitude)
                 };
                 // check if the sponsor has enough free shares to afford the sponsor_bond
-                ensure!(total_shares >= new_reserved, Error::<T>::InsufficientMembershipVoteCollateral);
+                ensure!(
+                    total_shares >= new_reserved, Error::<T>::InsufficientMembershipVoteCollateral
+                );
                 <VotesByMembers<T>>::insert(index, &voter, new_vote);
                 <MembershipShares<T>>::insert(&voter, (new_reserved, total_shares));
             }
@@ -360,14 +402,19 @@ decl_module! {
                     new_vote_state.in_favor -= shares_imbalance;
                 }
                 if less_shares_reserved {
-                    // less shares are reserved in new vote so subtract how much larger the last vote was relative to the new one
+                    // less shares are reserved in new vote so subtract how much
+                    // larger the last vote was relative to the new one
                     new_vote_state.turnout -= difference;
                     new_reserved -= difference;
                 } else {
-                    // more shares are reserved in new vote so add how much larger the new vote is relative to the last one
+                    // more shares are reserved in new vote so add how much
+                    // larger the new vote is relative to the last one
                     new_vote_state.turnout += difference;
                     new_reserved += difference;
-                    ensure!(total_shares >= new_reserved, Error::<T>::InsufficientMembershipVoteCollateral);
+                    ensure!(
+                        total_shares >= new_reserved,
+                        Error::<T>::InsufficientMembershipVoteCollateral
+                    );
                 }
                 <MembershipShares<T>>::insert(&voter, (new_reserved, total_shares));
                 <VotesByMembers<T>>::insert(index, &voter, vote);
@@ -387,15 +434,18 @@ decl_module! {
 
 decl_storage! {
     trait Store for Module<T: Trait> as Protoshine {
-        /// DEPRECATED UNTIL #7 is implemented and then this will be useful for iterating over all proposals to purge old ones
+        // // DEPRECATED UNTIL #7 is implemented and then this will be useful for
+        // // iterating over all proposals to purge old ones
         // MembershipApplicationQ get(fn membership_application_q): Vec<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
 
         /// Applications for membership into the organization
-        MembershipApplications get(fn membership_applications): map ProposalIndex => Option<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
+        MembershipApplications get(fn membership_applications):
+            map ProposalIndex => Option<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
         /// Number of proposals that have been made.
         MembershipApplicationCount get(fn membership_application_count): ProposalIndex;
         /// Membership proposal voting state
-        MembershipVoteStates get(fn membership_vote_states): map ProposalIndex => Option<MinimalMembershipVoteState>;
+        MembershipVoteStates get(fn membership_vote_states):
+            map ProposalIndex => Option<MinimalMembershipVoteState>;
         /// Membership proposal indices that have been approved but not yet absorbed.
         MembershipApprovals get(fn membership_approvals): Vec<ProposalIndex>;
 
@@ -404,9 +454,11 @@ decl_storage! {
         /// TODO: Should be changed to `bank_accounts` when we scale this logic for sunshine
         BankAccount get(fn bank_account): Bank<T::AccountId>;
         /// Share amounts maps to (shares_reserved, total_shares) s.t. shares_reserved are reserved for votes or sponsorships
-        MembershipShares get(fn membership_shares): map T::AccountId => Option<(Shares, Shares)>;
+        MembershipShares get(fn membership_shares):
+            map T::AccountId => Option<(Shares, Shares)>;
         /// Double Map from ProposalIndex => AccountId => Maybe(Vote)
-        VotesByMembers get(fn votes_by_members): double_map ProposalIndex, hasher(twox_64_concat) T::AccountId => Option<Vote>;
+        VotesByMembers get(fn votes_by_members):
+            double_map ProposalIndex, hasher(twox_64_concat) T::AccountId => Option<Vote>;
     }
     add_extra_genesis {
         build(|_config| {
@@ -426,8 +478,8 @@ decl_event!(
         <T as frame_system::Trait>::BlockNumber,
     {
         MembershipApplicationProposed(ProposalIndex, Balance, Shares, BlockNumber),
-	/// An application was sponsored by a member on-chain with some of their `Shares` at least equal
-	/// to the `sponsor_quota` (metaparameter).
+    /// An application was sponsored by a member on-chain with some of 
+    /// their `Shares` at least equal to the `sponsor_quota` (metaparameter).
 	/// (index of proposal, sponsor quota for sponsorship, stake promised, shares requested)
         MembershipApplicationSponsored(ProposalIndex, Shares, Balance, Shares),
     }
@@ -452,13 +504,15 @@ decl_error! {
         InsufficientMembershipSponsorCollateral,
         /// Sponsor doesn't have enough shares to vote on membership app
         InsufficientMembershipVoteCollateral,
-        /// Every vote inputs a magnitude and this must be above the minimum vote bond (it is expressed in shares)
+        /// Every vote inputs a magnitude and this must be above the minimum vote bond
+        /// (expressed in shares)
         VoteMagnitudeBelowMinimumVoteBond,
         /// The vote state was never sponsored correctly so its vote state was not initialized
         VoteStateUninitialized,
         /// New voting option is not handled by the big match statement
         NewVotingOptionNotHandled,
-        /// Could split this into at least `SponsorRequestForNonApplication` and `VoteOnNonVotingProposal`
+        /// Could split this into at least `SponsorRequestForNonApplication`
+        /// and `VoteOnNonVotingProposal`
         RequestInWrongStage,
         /// There is no owner of the bank
         NoBankOwner,
@@ -527,9 +581,11 @@ impl<T: Trait> Module<T> {
         }
     }
 
-    // -- MAKE BELOW METHODS SPECIFIC TO SOME TRAIT `impl BANKACCOUNT<T::ACCOUNTID> for Module<T>` --
+    // -- MAKE BELOW METHODS SPECIFIC TO SOME TRAIT
+    // `impl BANKACCOUNT<T::ACCOUNTID> for Module<T>` --
     pub fn account_id() -> T::AccountId {
-        //  TODO: in the multi-org version, the `ModuleId` is passed in and this still returns `T::AccountId`
+        //  TODO: in the multi-org version, the `ModuleId` is passed in and
+        // this still returns `T::AccountId`
         BANK_ID.into_account()
     }
 

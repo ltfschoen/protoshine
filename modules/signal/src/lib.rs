@@ -5,9 +5,10 @@ use sp_runtime::{
 };
 use sp_std::fmt::Debug;
 
-/// Captures the minimal required behavior for the `Bank` abstraction with respect to share issuance
-/// - WARNING: constraints must be satisfied around the logic that calls these methods in order for this to be safe because
-/// no checks are done here
+/// Captures the minimal required behavior for the `Bank` abstraction with
+/// respect to share issuance
+/// - WARNING: constraints must be satisfied around the logic that calls these
+/// methods in order for this to be safe because no checks are done here
 pub trait ShareBank {
     type Shares;
 

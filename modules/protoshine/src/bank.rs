@@ -57,9 +57,10 @@ impl<AccountId> Default for Bank<AccountId> {
     }
 }
 
-/// WARNING: these methods only work if we restrict where this can be called in the runtime to places that
-/// satisfy constraints such as
-/// - `new` cannot be called unless the Owner::Address(AccountId) stakes some minimum amount of capital; this is a runtime method's constraints
+/// WARNING: these methods only work if we restrict where this can be called in
+/// the runtime to places that satisfy constraints such as
+/// - `new` cannot be called unless the Owner::Address(AccountId) stakes some
+/// minimum amount of capital; this is a runtime method's constraints
 impl<AccountId> Bank<AccountId> {
     pub fn new(initial_shares: Shares, owner: Owner<AccountId>) -> Bank<AccountId> {
         Self {
