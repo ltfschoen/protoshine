@@ -530,6 +530,7 @@ impl<T: Trait> Module<T> {
 
     // -- MAKE BELOW METHODS SPECIFIC TO SOME TRAIT `impl BANKACCOUNT<T::ACCOUNTID> for Module<T>` --
     pub fn account_id() -> T::AccountId {
+        //  TODO: in the multi-org version, the `ModuleId` is passed in and this still returns `T::AccountId`
         BANK_ID.into_account()
     }
 

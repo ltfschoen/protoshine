@@ -11,7 +11,7 @@ sp-std = { git = "https://github.com/paritytech/substrate.git", branch = "master
 sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 frame-support = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 frame-system = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
-pallet-balances = { version = "2.0.0", default-features = false, path = "../balances" }
+pallet-balances = { git = "https://github.com/paritytech/substrate.git", branch = "master", default-features = false }
 signal = {path = "../signal"}
 
 [dev-dependencies]
@@ -27,4 +27,5 @@ std = [
 	"sp-runtime/std",
 	"frame-support/std",
 	"frame-system/std",
+	"pallet-balances/std",
 ]
