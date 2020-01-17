@@ -85,7 +85,7 @@ pub enum Vote {
 impl Vote {
     fn is_in_favor(&self) -> bool {
         match self {
-            Vote::InFavor(shares) => true,
+            Vote::InFavor(_) => true,
             _ => false,
         }
     }
@@ -208,7 +208,7 @@ decl_module! {
             ensure!(membership_proposal.stage == ProposalStage::Application, Error::<T>::RequestInWrongStage);
 
             // (2) should be calculated by UI ahead of time and calculated, but this structure fosters dynamic collateral pricing
-            let sponsor_bond = Self::calculate_membership_sponsor_bond(membership_proposal.stake_promised.clone(), membership_proposal.shares_requested.clone())?;
+            let sponsor_bond = Self::calculate_membership_sponsor_bond(membership_proposal.stake_promised, membership_proposal.shares_requested)?;
 
             // (3) check if the sponsor has enough to afford the sponsor_bond
             let (reserved_shares, total_shares) = <MembershipShares<T>>::get(&sponsor).expect("invariant i: all members must have some shares and therefore some item in the shares map");
@@ -252,9 +252,7 @@ decl_module! {
             // the vote bond's is `T::MembershipVoteBond` but it reserves the magnitude of the vote (=> the minimum vote amount is `T::MembershipVoteBond`)
             ensure!(magnitude >= T::MembershipVoteBond::get(), Error::<T>::VoteMagnitudeBelowMinimumVoteBond);
 
-            // get the `reserved_shares` so it can be updated based on the path that follows
-            let (reserved_shares, total_shares) = <MembershipShares<T>>::get(&voter).expect("invariant i: all members must have some shares and therefore some item in the shares map");
-            // Update Membership Voting State (this code should be refactored)
+            // Get Membership Voting State to verify valid transition before updating it
             let wrapped_vote_by_member = <VotesByMembers<T>>::get(index, &voter);
 
             // check if member can afford vote
@@ -265,7 +263,6 @@ decl_module! {
             let (mut new, mut same, mut different) = (false, false, false);
             let mut new_reserved = reserved_shares;
             let mut new_magnitude = magnitude;
-            let mut new_voting_option: bool = false;
             // all of these variable initializations are designed to be overshadowed
             let mut shares_imbalance_sign: bool = false;
             let mut shares_imbalance: Shares = 0;
@@ -319,8 +316,8 @@ decl_module! {
                     }
                     // change total_turnout based on difference
                 },
-                // not using this anywhere, but required for `non_exhaustive` on `Vot`
-                Some(_) => new_voting_option = true,
+                // if a voting option is added, a branch must be added here to account for it
+                Some(_) => return Err(Error::<T>::NewVotingOptionNotHandled.into()),
             }
             let mut new_vote_state = old_vote_state;
             if new {
@@ -340,15 +337,14 @@ decl_module! {
             if same {
                 // there is an existing vote in the same direction (so aggregate new_magnitude and old_magnitude in match statement)
                 new_reserved += magnitude;
-                let new_vote: Vote;
-                if direction {
+                let new_vote = if direction {
                     new_vote_state.in_favor += magnitude;
                     new_vote_state.turnout += magnitude;
-                    new_vote = Vote::InFavor(new_magnitude);
+                    Vote::InFavor(new_magnitude)
                 } else {
                     new_vote_state.turnout += magnitude;
-                    new_vote = Vote::Against(new_magnitude);
-                } // TODO: update storage items!
+                    Vote::Against(new_magnitude)
+                };
                 // check if the sponsor has enough free shares to afford the sponsor_bond
                 ensure!(total_shares >= new_reserved, Error::<T>::InsufficientMembershipVoteCollateral);
                 <VotesByMembers<T>>::insert(index, &voter, new_vote);
@@ -459,6 +455,8 @@ decl_error! {
         VoteMagnitudeBelowMinimumVoteBond,
         /// The vote state was never sponsored correctly so its vote state was not initialized
         VoteStateUninitialized,
+        /// New voting option is not handled by the big match statement
+        NewVotingOptionNotHandled,
         /// Could split this into at least `SponsorRequestForNonApplication` and `VoteOnNonVotingProposal`
         RequestInWrongStage,
         /// There is no owner of the bank
