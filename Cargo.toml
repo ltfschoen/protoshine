@@ -2,4 +2,5 @@
 members = [
     "modules/protoshine",
     "modules/signal",
+    "modules/balances"
 ]

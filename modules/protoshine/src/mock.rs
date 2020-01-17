@@ -58,19 +58,22 @@ impl pallet_balances::Trait for Test {
     type CreationFee = CreationFee;
 }
 parameter_types! {
-    // proposal bond is 5% of amount stake_promised or the minimium (TODO: change this logic ASAP)
-    pub const MembershipProposalBond: Permill = Permill::from_percent(5);
-    pub const MembershipProposalBondMinimum: u64 = 1;
-    pub const BatchPeriod: u64 = 2;
+    pub const MembershipProposalBond: u64 = 1;
+    pub const MembershipSponsorBond: u32 = 3;
+    pub const MembershipVoteBond: u32 = 1;
     pub const MaximumShareIssuance: Permill = Permill::from_percent(50);
+    pub const MembershipConsensusThreshold: Permill = Permill::from_percent(67);
+    pub const BatchPeriod: u64 = 2;
 }
 impl Trait for Test {
     type Currency = pallet_balances::Module<Test>;
     // not testing event emission in this runtime or using it?
     type Event = ();
     type MembershipProposalBond = MembershipProposalBond;
-    type MembershipProposalBondMinimum = MembershipProposalBondMinimum;
+    type MembershipSponsorBond = MembershipSponsorBond;
+    type MembershipVoteBond = MembershipVoteBond;
     type MaximumShareIssuance = MaximumShareIssuance;
+    type MembershipConsensusThreshold = MembershipConsensusThreshold;
     type BatchPeriod = BatchPeriod;
 }
 type System = frame_system::Module<Test>;
@@ -81,13 +84,11 @@ fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
-    pallet_balances::GenesisConfig::<Test> {
+    pallet_balances::GenesisConfig::<Test>{
         // Total issuance will be 200 with treasury account initialized at ED.
         balances: vec![(0, 100), (1, 98), (2, 1)],
         vesting: vec![],
-    }
-    .assimilate_storage(&mut t)
-    .unwrap();
+    }.assimilate_storage(&mut t).unwrap();
     GenesisConfig::default()
         .assimilate_storage::<Test>(&mut t)
         .unwrap();
@@ -97,7 +98,9 @@ fn new_test_ext() -> sp_io::TestExternalities {
 #[test]
 fn genesis_config_works() {
     new_test_ext().execute_with(|| {
-        assert_eq!(Protoshine::bank_balance(&Protoshine::account_id()), 0);
+        // would need to instantiate the bank
+        // then pass that in
+        // assert_eq!(Protoshine::bank_balance(&Protoshine::account_id()), 0);
         assert_eq!(Protoshine::membership_application_count(), 0);
     });
 }
