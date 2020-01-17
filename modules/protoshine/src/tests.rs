@@ -2,7 +2,7 @@
 use super::*;
 use mock::*;
 
-use frame_support::{assert_ok, assert_noop};
+use frame_support::{assert_noop, assert_ok};
 
 fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::default()
