@@ -20,6 +20,10 @@ pub enum VoteThreshold {
     SuperMajorityAgainst,
     /// A simple majority of approvals is needed to pass this vote.
     SimpleMajority,
+    // SimpleBFT
+    // unanimous approval
+    // 1 approving member
+    // 2 approving members
 } // TODO: simple bft, configurable thresholds, multisig requiremets instead like a simple `in_favor` minimum
 
 pub trait Approved {

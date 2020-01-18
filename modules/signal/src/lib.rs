@@ -1,8 +1,5 @@
 use codec::FullCodec;
-use sp_runtime::{
-    traits::{MaybeSerializeDeserialize, SimpleArithmetic},
-    Permill,
-};
+use sp_runtime::traits::{MaybeSerializeDeserialize, SimpleArithmetic};
 use sp_std::fmt::Debug;
 
 /// Captures the minimal required behavior for the `Bank` abstraction with
@@ -17,27 +14,6 @@ pub trait ShareBank {
 
     /// Burning shares (_buyback_) returns total shares
     fn buyback(&mut self, amount: Self::Shares) -> Self::Shares;
-}
-
-/// Wrapper around Permill for `EnsureShareWeight{AtLeast, MoreThan}`
-pub trait Threshold {
-    const THRESHOLD: Permill;
-}
-
-/// Requires 1/2x + 1 shares in favor for x shares that voted
-pub struct _Majority;
-impl Threshold for _Majority {
-    const THRESHOLD: Permill = Permill::from_percent(51);
-}
-/// Requires 2/3x + 1 shares in favor for x shares that voted
-pub struct _BftSuperMajority;
-impl Threshold for _BftSuperMajority {
-    const THRESHOLD: Permill = Permill::from_percent(67);
-}
-/// Requires all shares that voted to be in favor
-pub struct _Unanimous;
-impl Threshold for _Unanimous {
-    const THRESHOLD: Permill = Permill::from_percent(100);
 }
 
 /// Signal is used by members to influence collective action. It can be used to

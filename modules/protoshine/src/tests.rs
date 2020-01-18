@@ -24,12 +24,21 @@ fn new_test_ext() -> sp_io::TestExternalities {
 #[test]
 fn genesis_config_works() {
     new_test_ext().execute_with(|| {
-        // would need to instantiate the bank
-        // then pass that in
-        // assert_eq!(Protoshine::bank_balance(&Protoshine::account_id()), 0);
+        assert_eq!(Balances::free_balance(&0), 100);
+        assert_eq!(Balances::free_balance(&1), 98);
+        assert_eq!(Balances::free_balance(&2), 1);
         assert_eq!(Protoshine::membership_application_count(), 0);
     });
 }
+
+// make a genesis config for the bank
+
+// #[test]
+// fn membership_app_panics_as_expected() {
+//     new_test_ext().execute_with(|| {
+
+//     });
+// }
 
 // add to tests proper
 // #[cfg(test)]

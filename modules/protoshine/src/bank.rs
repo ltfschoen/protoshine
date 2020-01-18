@@ -7,6 +7,21 @@ use signal::ShareBank;
 use sp_runtime::{ModuleId, RuntimeDebug};
 use sp_std::prelude::*;
 
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+/// Profile for existing share obligations
+/// - this prevents members from signalling with shares already served for ongoing sponsorships/votes
+pub struct ShareProfile {
+    pub reserved_shares: Shares,
+    pub total_shares: Shares,
+}
+
+impl ShareProfile {
+    pub fn can_reserve(&self, amount: Shares) -> bool {
+        amount >= self.total_shares - self.reserved_shares
+    }
+}
+
 /// Single bank owner (for now)
 pub const BANK_ID: ModuleId = ModuleId(*b"protoshi");
 
