@@ -30,3 +30,21 @@ fn genesis_config_works() {
         assert_eq!(Protoshine::membership_application_count(), 0);
     });
 }
+
+// add to tests proper
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn should_work() {
+//         assert_eq!(
+//             VoteThreshold::SuperMajorityApprove.approved(60, 50, 110, 210),
+//             false
+//         );
+//         assert_eq!(
+//             VoteThreshold::SuperMajorityApprove.approved(100, 50, 150, 210),
+//             true
+//         );
+//     }
+// }
