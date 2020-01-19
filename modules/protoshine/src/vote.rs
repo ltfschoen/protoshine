@@ -8,7 +8,33 @@ use sp_std::ops::{Div, Mul, Rem};
 
 use super::*;
 
-/// A means of determining if a vote is past pass threshold.
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+#[non_exhaustive]
+/// Votes submitted by voting members
+/// - could add more explicit commands here like `change_vote` to remove ambiguity of #18
+pub enum Vote {
+    InFavor(Shares),
+    Against(Shares),
+}
+
+// not sure if this is necessary or if I can check the form another way
+impl Vote {
+    pub (crate) fn is_in_favor(&self) -> bool {
+        match self {
+            Vote::InFavor(_) => true,
+            _ => false,
+        }
+    }
+    pub (crate) fn inner(&self) -> Shares {
+        match self {
+            Vote::InFavor(shares) => *shares,
+            Vote::Against(shares) => *shares,
+        }
+    }
+}
+
+/// A means of determining if a ProposalState is past pass threshold.
 #[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, sp_runtime::RuntimeDebug)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[non_exhaustive]

@@ -13,7 +13,7 @@ use bank::{Bank, Owner, ShareProfile, BANK_ID};
 use signal::ShareBank;
 
 mod vote;
-use vote::{Approved, MembershipVotingState, VoteThreshold};
+use vote::{Vote, Approved, MembershipVotingState, VoteThreshold};
 
 use codec::{Decode, Encode};
 use frame_support::traits::{Currency, ExistenceRequirement, Get, ReservableCurrency};
@@ -64,32 +64,6 @@ pub struct MembershipProposal<AccountId, BalanceOf, BlockNumber> {
     /// if `ApplicationTimeLimit` is exceeded past this time_proposed, the application is removed
     /// - TODO: use #7 to get rid of this or wrap it in `ProposalStage::Application` if possible
     time_proposed: BlockNumber,
-}
-
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
-#[non_exhaustive]
-/// Votes submitted by voting members
-/// - could add more explicit commands here like `change_vote` to remove ambiguity of #18
-pub enum Vote {
-    InFavor(Shares),
-    Against(Shares),
-}
-
-// not sure if this is necessary or if I can check the form another way
-impl Vote {
-    fn is_in_favor(&self) -> bool {
-        match self {
-            Vote::InFavor(_) => true,
-            _ => false,
-        }
-    }
-    fn inner(&self) -> Shares {
-        match self {
-            Vote::InFavor(shares) => *shares,
-            Vote::Against(shares) => *shares,
-        }
-    }
 }
 
 pub trait Trait: frame_system::Trait {
