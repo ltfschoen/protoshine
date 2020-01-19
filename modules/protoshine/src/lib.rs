@@ -9,7 +9,7 @@ mod mock;
 mod tests;
 
 mod bank;
-use bank::{Bank, ShareProfile, Owner, BANK_ID};
+use bank::{Bank, Owner, ShareProfile, BANK_ID};
 use signal::ShareBank;
 
 mod vote;
