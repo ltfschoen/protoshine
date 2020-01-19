@@ -9,13 +9,14 @@ mod mock;
 mod tests;
 
 mod bank;
-use bank::{Bank, ShareProfile, BANK_ID};
+use bank::{Bank, ShareProfile, Owner, BANK_ID};
+use signal::ShareBank;
 
 mod vote;
 use vote::{Approved, MembershipVotingState, VoteThreshold};
 
 use codec::{Decode, Encode};
-use frame_support::traits::{Currency, Get, ReservableCurrency};
+use frame_support::traits::{Currency, ExistenceRequirement, Get, ReservableCurrency};
 use frame_support::{decl_error, decl_event, decl_module, decl_storage, ensure};
 use frame_system::{self as system, ensure_signed};
 #[cfg(feature = "std")]
@@ -477,7 +478,15 @@ decl_storage! {
             }).collect::<Vec<_>>()
         }): Vec<T::AccountId>;
         /// TODO: Should be changed to `bank_accounts` when we scale this logic for sunshine
-        BankAccount get(fn bank_account): Bank<T::AccountId>;
+        BankAccount get(fn bank_account) build(|config: &GenesisConfig<T>| {
+            let owner = Owner::Owned(<Module<T>>::account_id());
+            let mut bank = Bank::new(owner, 0u32);
+            for _i in config.member_buy_in.iter() {
+                // TODO: this logic needs to move to runtime context or its separately tracked and poorly designed
+                bank.issue(10);
+            }
+            bank
+        }): Bank<T::AccountId>;
         /// Share amounts maps to (shares_reserved, total_shares) s.t. shares_reserved are reserved for votes or sponsorships
         pub MembershipShares get(fn membership_shares) build(|config: &GenesisConfig<T>| {
             config.member_buy_in.iter().map(|(who, _, shares_requested)| {
@@ -509,9 +518,9 @@ decl_storage! {
             for (new_member, promised_buy_in, _) in &config.member_buy_in {
                 // cache the buy-in and have some in-module time limit before which this is paid
                 // (could also pay some portion of it right now and some later, could be configurable)
-                T::Currency::reserve(&new_member, *promised_buy_in)
-                        .expect("balance too low to participate in initial ceremony");
-                // TODO: schedule payment(s) to &<Module<T>>::account_id() or do them here
+                // (see #25)
+                T::Currency::transfer(&new_member, &<Module<T>>::account_id(), *promised_buy_in, ExistenceRequirement::AllowDeath)
+                    .expect("See issue #25 for initial configurations discussion which is ongoing");
             }
         });
     }
@@ -639,7 +648,7 @@ impl<T: Trait> Module<T> {
 
     /// Return the amount in the bank (in T::Currency denomination)
     fn bank_balance(bank: Bank<T::AccountId>) -> Result<BalanceOf<T>, Error<T>> {
-        let account = bank.account.inner().ok_or(Error::<T>::NoBankOwner)?;
+        let account = bank.joint_account.inner().ok_or(Error::<T>::NoBankOwner)?;
         let balance = T::Currency::free_balance(&account)
             // TODO: ponder whether this should be here (not if I don't follow the same existential
             // deposit system as polkadot...)

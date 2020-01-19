@@ -57,7 +57,7 @@ impl<AccountId> Owner<AccountId> {
 pub struct Bank<AccountId> {
     /// The account_id represented by the bank
     /// TODO: multi-account management and/or rotating accounts (do keys already rotate?)
-    pub account: Owner<AccountId>,
+    pub joint_account: Owner<AccountId>,
     /// Total number of shares backing for an org
     pub shares: Shares,
 }
@@ -66,7 +66,7 @@ pub struct Bank<AccountId> {
 impl<AccountId> Default for Bank<AccountId> {
     fn default() -> Self {
         Self {
-            account: Owner::None,
+            joint_account: Owner::None,
             shares: 0,
         }
     }
@@ -77,9 +77,9 @@ impl<AccountId> Default for Bank<AccountId> {
 /// - `new` cannot be called unless the Owner::Address(AccountId) stakes some
 /// minimum amount of capital; this is a runtime method's constraints
 impl<AccountId> Bank<AccountId> {
-    pub fn new(initial_shares: Shares, owner: Owner<AccountId>) -> Bank<AccountId> {
+    pub fn new(owner: Owner<AccountId>, initial_shares: Shares) -> Bank<AccountId> {
         Self {
-            account: owner,
+            joint_account: owner,
             shares: initial_shares,
         }
     }
