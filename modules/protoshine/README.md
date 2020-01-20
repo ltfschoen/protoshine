@@ -1,4 +1,6 @@
-# Protoshine Pseudocode
+# SPEC
+
+## lib.rs
 
 ```rust
 // on-chain state

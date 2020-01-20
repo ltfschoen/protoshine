@@ -1,2 +1,4 @@
 target/
 Cargo.lock
+# delete and add info accordingly
+spec.md

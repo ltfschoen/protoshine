@@ -97,6 +97,128 @@ pub trait Trait: frame_system::Trait {
     type BatchPeriod: Get<Self::BlockNumber>;
 }
 
+decl_event!(
+    pub enum Event<T>
+    where
+        Balance = BalanceOf<T>,
+        <T as frame_system::Trait>::BlockNumber,
+    {
+        MembershipApplicationProposed(ProposalIndex, Balance, Shares, BlockNumber),
+    /// An application was sponsored by a member on-chain with some of 
+    /// their `Shares` at least equal to the `sponsor_quota` (metaparameter).
+	/// (index of proposal, sponsor quota for sponsorship, stake promised, shares requested)
+        MembershipApplicationSponsored(ProposalIndex, Shares, Balance, Shares),
+    }
+);
+
+decl_error! {
+    /// Metadata for cleanly handling error paths
+    /// TODO: pass in metadata into variants if possible (and it is!)
+    pub enum Error for Module<T: Trait> {
+        /// Not a member of the collective for which the runtime method is permissioned
+        NotAMember,
+        /// Poorly formed membership application because stake_promised <= shares_requested or
+        /// stake_promised == 0
+        InvalidMembershipApplication,
+        /// Applicant can't cover collateral requirement for membership application
+        InsufficientMembershipApplicantCollateral,
+        /// Index doesn't haven associated membership proposal
+        IndexWithNoAssociatedMembershipProposal,
+        /// Required sponsorship bond exceeds upper bound inputted by user
+        SponsorBondExceedsExpectations,
+        /// Sponsor doesn't have enough shares to sponsor membership app
+        InsufficientMembershipSponsorCollateral,
+        /// Sponsor doesn't have enough shares to vote on membership app
+        InsufficientMembershipVoteCollateral,
+        /// Every vote inputs a magnitude and this must be above the minimum vote bond
+        /// (expressed in shares)
+        VoteMagnitudeBelowMinimumVoteBond,
+        /// The vote state was never sponsored correctly so its vote state was not initialized
+        VoteStateUninitialized,
+        /// New voting option is not handled by the big match statement
+        NewVotingOptionNotHandled,
+        /// Could split this into at least `SponsorRequestForNonApplication`
+        /// and `VoteOnNonVotingProposal`
+        RequestInWrongStage,
+        /// No MembershipShares information
+        NoMembershipShareInfo,
+        /// There is no owner of the bank
+        NoBankOwner,
+    }
+}
+
+decl_storage! {
+    trait Store for Module<T: Trait> as Protoshine {
+        // // DEPRECATED UNTIL #7 is implemented and then this will be useful for
+        // // iterating over all proposals to purge old ones
+        // MembershipApplicationQ get(fn membership_application_q): Vec<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
+
+        /// Applications for membership into the organization
+        pub MembershipApplications get(fn membership_applications):
+            map ProposalIndex => Option<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
+        /// Number of proposals that have been made.
+        pub MembershipApplicationCount get(fn membership_application_count): ProposalIndex;
+        /// Membership proposal voting state
+        pub MembershipVoteStates get(fn membership_vote_states):
+            map ProposalIndex => Option<MembershipVotingState>;
+        /// Membership proposal indices that have been approved but not yet absorbed.
+        pub MembershipApprovals get(fn membership_approvals): Vec<ProposalIndex>;
+
+        /// Members should be replaced by group scaling logic
+        Members get(fn members) build(|config: &GenesisConfig<T>| {
+            config.member_buy_in.iter().map(|(who, _, _)| {
+                who.clone()
+            }).collect::<Vec<_>>()
+        }): Vec<T::AccountId>;
+        /// TODO: Should be changed to `bank_accounts` when we scale this logic for sunshine
+        BankAccount get(fn bank_account) build(|config: &GenesisConfig<T>| {
+            let owner = Owner::Owned(<Module<T>>::account_id());
+            let mut bank = Bank::new(owner, 0u32);
+            for _i in config.member_buy_in.iter() {
+                // TODO: this logic needs to move to runtime context or its separately tracked and poorly designed
+                bank.issue(10);
+            }
+            bank
+        }): Bank<T::AccountId>;
+        /// Share amounts maps to (shares_reserved, total_shares) s.t. shares_reserved are reserved for votes or sponsorships
+        pub MembershipShares get(fn membership_shares) build(|config: &GenesisConfig<T>| {
+            config.member_buy_in.iter().map(|(who, _, shares_requested)| {
+                // TODO: could offer configurability wrt how many shares are granted initially
+                // and how shares are frozen or taken away if the balance transfers are not made
+                // (make an issue for above initialization user flow)
+                let share_profile = ShareProfile {
+                    reserved_shares: 0u32,
+                    total_shares: *shares_requested,
+                };
+                (who.clone(), share_profile)
+            }).collect::<Vec<_>>()
+            // will have to type alias (Shares, Shares) to some struct instead of whatever this is
+        }): map T::AccountId => Option<ShareProfile>;
+        /// Double Map from ProposalIndex => AccountId => Maybe(Vote)
+        VotesByMembers get(fn votes_by_members):
+            double_map ProposalIndex, hasher(twox_64_concat) T::AccountId => Option<Vote>;
+    }
+    add_extra_genesis {
+        config(member_buy_in): Vec<(T::AccountId, BalanceOf<T>, Shares)>;
+
+        build(|config: &GenesisConfig<T>| {
+            // This is the minimum amount in the Bank Account
+            let _ = T::Currency::make_free_balance_be(
+                &<Module<T>>::account_id(),
+                T::Currency::minimum_balance(),
+            );
+
+            for (new_member, promised_buy_in, _) in &config.member_buy_in {
+                // cache the buy-in and have some in-module time limit before which this is paid
+                // (could also pay some portion of it right now and some later, could be configurable)
+                // (see #25)
+                T::Currency::transfer(&new_member, &<Module<T>>::account_id(), *promised_buy_in, ExistenceRequirement::AllowDeath)
+                    .expect("See issue #25 for initial configurations discussion which is ongoing");
+            }
+        });
+    }
+}
+
 decl_module! {
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
         type Error = Error<T>;
@@ -425,128 +547,6 @@ decl_module! {
             }
             Ok(())
         }
-    }
-}
-
-decl_storage! {
-    trait Store for Module<T: Trait> as Protoshine {
-        // // DEPRECATED UNTIL #7 is implemented and then this will be useful for
-        // // iterating over all proposals to purge old ones
-        // MembershipApplicationQ get(fn membership_application_q): Vec<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
-
-        /// Applications for membership into the organization
-        pub MembershipApplications get(fn membership_applications):
-            map ProposalIndex => Option<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
-        /// Number of proposals that have been made.
-        pub MembershipApplicationCount get(fn membership_application_count): ProposalIndex;
-        /// Membership proposal voting state
-        pub MembershipVoteStates get(fn membership_vote_states):
-            map ProposalIndex => Option<MembershipVotingState>;
-        /// Membership proposal indices that have been approved but not yet absorbed.
-        pub MembershipApprovals get(fn membership_approvals): Vec<ProposalIndex>;
-
-        /// Members should be replaced by group scaling logic
-        Members get(fn members) build(|config: &GenesisConfig<T>| {
-            config.member_buy_in.iter().map(|(who, _, _)| {
-                who.clone()
-            }).collect::<Vec<_>>()
-        }): Vec<T::AccountId>;
-        /// TODO: Should be changed to `bank_accounts` when we scale this logic for sunshine
-        BankAccount get(fn bank_account) build(|config: &GenesisConfig<T>| {
-            let owner = Owner::Owned(<Module<T>>::account_id());
-            let mut bank = Bank::new(owner, 0u32);
-            for _i in config.member_buy_in.iter() {
-                // TODO: this logic needs to move to runtime context or its separately tracked and poorly designed
-                bank.issue(10);
-            }
-            bank
-        }): Bank<T::AccountId>;
-        /// Share amounts maps to (shares_reserved, total_shares) s.t. shares_reserved are reserved for votes or sponsorships
-        pub MembershipShares get(fn membership_shares) build(|config: &GenesisConfig<T>| {
-            config.member_buy_in.iter().map(|(who, _, shares_requested)| {
-                // TODO: could offer configurability wrt how many shares are granted initially
-                // and how shares are frozen or taken away if the balance transfers are not made
-                // (make an issue for above initialization user flow)
-                let share_profile = ShareProfile {
-                    reserved_shares: 0u32,
-                    total_shares: *shares_requested,
-                };
-                (who.clone(), share_profile)
-            }).collect::<Vec<_>>()
-            // will have to type alias (Shares, Shares) to some struct instead of whatever this is
-        }): map T::AccountId => Option<ShareProfile>;
-        /// Double Map from ProposalIndex => AccountId => Maybe(Vote)
-        VotesByMembers get(fn votes_by_members):
-            double_map ProposalIndex, hasher(twox_64_concat) T::AccountId => Option<Vote>;
-    }
-    add_extra_genesis {
-        config(member_buy_in): Vec<(T::AccountId, BalanceOf<T>, Shares)>;
-
-        build(|config: &GenesisConfig<T>| {
-            // This is the minimum amount in the Bank Account
-            let _ = T::Currency::make_free_balance_be(
-                &<Module<T>>::account_id(),
-                T::Currency::minimum_balance(),
-            );
-
-            for (new_member, promised_buy_in, _) in &config.member_buy_in {
-                // cache the buy-in and have some in-module time limit before which this is paid
-                // (could also pay some portion of it right now and some later, could be configurable)
-                // (see #25)
-                T::Currency::transfer(&new_member, &<Module<T>>::account_id(), *promised_buy_in, ExistenceRequirement::AllowDeath)
-                    .expect("See issue #25 for initial configurations discussion which is ongoing");
-            }
-        });
-    }
-}
-
-decl_event!(
-    pub enum Event<T>
-    where
-        Balance = BalanceOf<T>,
-        <T as frame_system::Trait>::BlockNumber,
-    {
-        MembershipApplicationProposed(ProposalIndex, Balance, Shares, BlockNumber),
-    /// An application was sponsored by a member on-chain with some of 
-    /// their `Shares` at least equal to the `sponsor_quota` (metaparameter).
-	/// (index of proposal, sponsor quota for sponsorship, stake promised, shares requested)
-        MembershipApplicationSponsored(ProposalIndex, Shares, Balance, Shares),
-    }
-);
-
-decl_error! {
-    /// Metadata for cleanly handling error paths
-    /// TODO: pass in metadata into variants if possible (and it is!)
-    pub enum Error for Module<T: Trait> {
-        /// Not a member of the collective for which the runtime method is permissioned
-        NotAMember,
-        /// Poorly formed membership application because stake_promised <= shares_requested or
-        /// stake_promised == 0
-        InvalidMembershipApplication,
-        /// Applicant can't cover collateral requirement for membership application
-        InsufficientMembershipApplicantCollateral,
-        /// Index doesn't haven associated membership proposal
-        IndexWithNoAssociatedMembershipProposal,
-        /// Required sponsorship bond exceeds upper bound inputted by user
-        SponsorBondExceedsExpectations,
-        /// Sponsor doesn't have enough shares to sponsor membership app
-        InsufficientMembershipSponsorCollateral,
-        /// Sponsor doesn't have enough shares to vote on membership app
-        InsufficientMembershipVoteCollateral,
-        /// Every vote inputs a magnitude and this must be above the minimum vote bond
-        /// (expressed in shares)
-        VoteMagnitudeBelowMinimumVoteBond,
-        /// The vote state was never sponsored correctly so its vote state was not initialized
-        VoteStateUninitialized,
-        /// New voting option is not handled by the big match statement
-        NewVotingOptionNotHandled,
-        /// Could split this into at least `SponsorRequestForNonApplication`
-        /// and `VoteOnNonVotingProposal`
-        RequestInWrongStage,
-        /// No MembershipShares information
-        NoMembershipShareInfo,
-        /// There is no owner of the bank
-        NoBankOwner,
     }
 }
 
