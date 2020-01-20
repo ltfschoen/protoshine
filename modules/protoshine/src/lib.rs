@@ -13,7 +13,7 @@ use bank::{Bank, Owner, ShareProfile, BANK_ID};
 use signal::ShareBank;
 
 mod vote;
-use vote::{Vote, Approved, MembershipVotingState, VoteThreshold};
+use vote::{Approved, MembershipVotingState, Vote, VoteThreshold};
 
 use codec::{Decode, Encode};
 use frame_support::traits::{Currency, ExistenceRequirement, Get, ReservableCurrency};

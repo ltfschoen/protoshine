@@ -20,13 +20,13 @@ pub enum Vote {
 
 // not sure if this is necessary or if I can check the form another way
 impl Vote {
-    pub (crate) fn is_in_favor(&self) -> bool {
+    pub(crate) fn is_in_favor(&self) -> bool {
         match self {
             Vote::InFavor(_) => true,
             _ => false,
         }
     }
-    pub (crate) fn inner(&self) -> Shares {
+    pub(crate) fn inner(&self) -> Shares {
         match self {
             Vote::InFavor(shares) => *shares,
             Vote::Against(shares) => *shares,

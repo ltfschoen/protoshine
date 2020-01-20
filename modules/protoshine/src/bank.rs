@@ -12,12 +12,12 @@ use sp_std::prelude::*;
 /// Profile for existing share obligations
 /// - this prevents members from signalling with shares already served for ongoing sponsorships/votes
 pub struct ShareProfile {
-    pub (crate) reserved_shares: Shares,
-    pub (crate) total_shares: Shares,
+    pub(crate) reserved_shares: Shares,
+    pub(crate) total_shares: Shares,
 }
 
 impl ShareProfile {
-    pub (crate) fn can_reserve(&self, amount: Shares) -> bool {
+    pub(crate) fn can_reserve(&self, amount: Shares) -> bool {
         amount >= self.total_shares - self.reserved_shares
     }
 }
@@ -37,7 +37,7 @@ pub enum Owner<AccountId> {
 }
 
 impl<AccountId> Owner<AccountId> {
-    pub (crate) fn inner(self) -> Option<AccountId> {
+    pub(crate) fn inner(self) -> Option<AccountId> {
         if let Owner::Owned(account) = self {
             Some(account)
         } else {
