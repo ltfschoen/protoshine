@@ -16,7 +16,7 @@ mod vote;
 use vote::{Approved, MembershipVotingState, Vote, VoteThreshold};
 
 mod collateral;
-use collateral::{ShareParity, BondHelper};
+use collateral::{BondHelper, ShareParity};
 
 use codec::{Decode, Encode};
 use frame_support::traits::{Currency, ExistenceRequirement, Get, ReservableCurrency};
@@ -663,13 +663,15 @@ impl<T: Trait> BondHelper for Module<T> {
         let shares_as_balance = BalanceOf::<T>::from(shares);
         match (shares_as_balance, capital) {
             (a, b) if a > b => {
-                let permill_approximate = Permill::from_rational_approximation(capital, shares_as_balance);
+                let permill_approximate =
+                    Permill::from_rational_approximation(capital, shares_as_balance);
                 ShareParity::CapitalOverShare(permill_approximate)
-            },
+            }
             (a, b) if a < b => {
-                let permill_approximate = Permill::from_rational_approximation(shares_as_balance, capital);
+                let permill_approximate =
+                    Permill::from_rational_approximation(shares_as_balance, capital);
                 ShareParity::ShareOverCapital(permill_approximate)
-            },
+            }
             _ => ShareParity::Equal,
         }
     }

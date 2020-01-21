@@ -2,14 +2,14 @@
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_runtime::{Permill, RuntimeDebug, traits::SimpleArithmetic};
+use sp_runtime::{traits::SimpleArithmetic, Permill, RuntimeDebug};
 use sp_std::prelude::*;
 // use signal::ShareBank; // add functionality to `ShareBank`
 
 /// Open to new names on this method!
 ///
 /// Wrapper around Permill for `Share : Capital` ratio comparisons
-/// - it is required because `from_ration_approximation(p, q)` 
+/// - it is required because `from_ration_approximation(p, q)`
 /// does not support instances in which `p > q`
 /// - upon second thought, this is basically a type for negotiation over conversion
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
