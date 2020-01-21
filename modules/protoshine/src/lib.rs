@@ -15,6 +15,9 @@ use signal::ShareBank;
 mod vote;
 use vote::{Approved, MembershipVotingState, Vote, VoteThreshold};
 
+mod collateral;
+use collateral::{ShareParity, BondHelper};
+
 use codec::{Decode, Encode};
 use frame_support::traits::{Currency, ExistenceRequirement, Get, ReservableCurrency};
 use frame_support::{decl_error, decl_event, decl_module, decl_storage, ensure};
@@ -25,9 +28,10 @@ use sp_runtime::traits::{AccountIdConversion, Saturating};
 use sp_runtime::{DispatchResult, Permill, RuntimeDebug};
 use sp_std::prelude::*;
 
+// TODO: replace with hashes as per recent issue
 type ProposalIndex = u32;
-type Shares = u32;
-type BalanceOf<T> =
+pub type Shares = u32;
+pub type BalanceOf<T> =
     <<T as Trait>::Currency as Currency<<T as frame_system::Trait>::AccountId>>::Balance;
 
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
@@ -648,5 +652,25 @@ impl<T: Trait> Module<T> {
             bank.shares,
             most_recent_balance,
         ))
+    }
+}
+
+impl<T: Trait> BondHelper for Module<T> {
+    type Shares = Shares;
+    type Capital = BalanceOf<T>;
+
+    fn share_parity_calculator(shares: Shares, capital: BalanceOf<T>) -> ShareParity {
+        let shares_as_balance = BalanceOf::<T>::from(shares);
+        match (shares_as_balance, capital) {
+            (a, b) if a > b => {
+                let permill_approximate = Permill::from_rational_approximation(capital, shares_as_balance);
+                ShareParity::CapitalOverShare(permill_approximate)
+            },
+            (a, b) if a < b => {
+                let permill_approximate = Permill::from_rational_approximation(shares_as_balance, capital);
+                ShareParity::ShareOverCapital(permill_approximate)
+            },
+            _ => ShareParity::Equal,
+        }
     }
 }

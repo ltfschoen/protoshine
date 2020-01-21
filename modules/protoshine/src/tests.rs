@@ -2,7 +2,7 @@
 use super::*;
 use mock::*;
 
-use frame_support::{assert_noop, assert_ok, assert_err};
+use frame_support::{assert_err, assert_noop, assert_ok};
 
 fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::default()
@@ -95,15 +95,23 @@ fn membership_check_works() {
     });
 }
 
-
 #[test]
 fn membership_application_enforces_panics() {
     new_test_ext().execute_with(|| {
         let seven = Origin::signed(7);
         // no freebies for membership applications, adding `enforced-criteria` is an upcoming feature
-        assert_err!(Protoshine::membership_application(seven.clone(), 0, 5), Error::<Test>::InvalidMembershipApplication);
-        assert_err!(Protoshine::membership_application(seven.clone(), 1, 5), Error::<Test>::InvalidMembershipApplication);
-        assert_err!(Protoshine::membership_application(seven, 5, 5), Error::<Test>::InsufficientMembershipApplicantCollateral);
+        assert_err!(
+            Protoshine::membership_application(seven.clone(), 0, 5),
+            Error::<Test>::InvalidMembershipApplication
+        );
+        assert_err!(
+            Protoshine::membership_application(seven.clone(), 1, 5),
+            Error::<Test>::InvalidMembershipApplication
+        );
+        assert_err!(
+            Protoshine::membership_application(seven, 5, 5),
+            Error::<Test>::InsufficientMembershipApplicantCollateral
+        );
     });
 }
 
@@ -113,7 +121,10 @@ fn poor_cant_afford_membership_application() {
     new_test_ext().execute_with(|| {
         let seven = Origin::signed(7);
         // no freebies for membership applications, adding `enforced-criteria` is an upcoming feature
-        assert_err!(Protoshine::membership_application(seven.clone(), 2, 10), Error::<Test>::InsufficientMembershipApplicantCollateral);
+        assert_err!(
+            Protoshine::membership_application(seven.clone(), 2, 10),
+            Error::<Test>::InsufficientMembershipApplicantCollateral
+        );
     });
 }
 
@@ -134,7 +145,10 @@ fn membership_application_works() {
             stage: ProposalStage::Application,
             time_proposed: 8,
         };
-        assert_eq!(Protoshine::membership_applications(1).unwrap(), expected_membership_app);
+        assert_eq!(
+            Protoshine::membership_applications(1).unwrap(),
+            expected_membership_app
+        );
     });
 }
 
@@ -144,7 +158,10 @@ fn application_bond_works() {
         System::set_block_number(8);
         let eight = Origin::signed(8);
         let bank_account = Protoshine::bank_account();
-        assert_eq!(Protoshine::collateralization_ratio(bank_account).unwrap(), Permill::one());
+        assert_eq!(
+            Protoshine::collateralization_ratio(bank_account).unwrap(),
+            Permill::one()
+        );
 
         let _ = Protoshine::membership_application(eight.clone(), 10, 10);
 
