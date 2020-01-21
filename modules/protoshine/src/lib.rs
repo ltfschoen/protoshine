@@ -197,6 +197,7 @@ decl_storage! {
         /// Double Map from ProposalIndex => AccountId => Maybe(Vote)
         VotesByMembers get(fn votes_by_members):
             double_map ProposalIndex, hasher(twox_64_concat) T::AccountId => Option<Vote>;
+        // TODO: add recipients vector for scheduled payments in `vote`
     }
     add_extra_genesis {
         config(member_buy_in): Vec<(T::AccountId, BalanceOf<T>, Shares)>;
@@ -543,7 +544,8 @@ decl_module! {
             } else {
                 // update vote state
                 <MembershipVoteStates>::insert(index, new_vote_state);
-                // emit voted event
+                // emit voted event (TODO: change this to emit based on branches above to inform client
+                // of changes to storage
             }
             Ok(())
         }

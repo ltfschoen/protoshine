@@ -11,14 +11,18 @@ fn new_test_ext() -> sp_io::TestExternalities {
     pallet_balances::GenesisConfig::<Test> {
         // Total issuance will be 200 with treasury account initialized at ED.
         balances: vec![
+            // members
             (1, 100),
-            (2, 82),
-            (3, 71),
-            (4, 69),
+            (2, 22),
+            (3, 49),
+            (4, 59),
             (5, 69),
             (6, 79),
-            (7, 21),
-            (8, 72),
+            // non-members
+            (7, 11),
+            (8, 616),
+            (9, 17),
+            (10, 10),
         ],
         vesting: vec![],
     }
@@ -28,14 +32,12 @@ fn new_test_ext() -> sp_io::TestExternalities {
     // for simplicity (could calculate fair value for each person `=>` could also use range-based negotiations)
     GenesisConfig::<Test> {
         member_buy_in: vec![
-            (1, 90, 10),
-            (2, 72, 10),
-            (3, 61, 10),
-            (4, 59, 10),
-            (5, 59, 10),
-            (6, 69, 10),
-            (7, 11, 10),
-            (8, 62, 10),
+            (1, 10, 10),
+            (2, 10, 10),
+            (3, 10, 10),
+            (4, 10, 10),
+            (5, 10, 10),
+            (6, 10, 10),
         ],
     }
     .assimilate_storage(&mut t)
@@ -47,39 +49,78 @@ fn new_test_ext() -> sp_io::TestExternalities {
 fn genesis_config_works() {
     new_test_ext().execute_with(|| {
         let mut expected_members: Vec<u64> = Vec::new();
-        for i in 1..9 {
-            expected_members.push(i);
-            // check balance configured as expected
-            assert_eq!(Balances::free_balance(i), 10);
-            // for now, configure same share profile for all members
-            let share_profile = ShareProfile {
-                reserved_shares: 0u32.into(),
-                total_shares: 10,
-            };
-            // check if the member share profile matches previously expressed expectations
-            assert_eq!(share_profile, Protoshine::membership_shares(&i).unwrap());
+        let mut expected_non_members: Vec<u64> = Vec::new();
+        // the first element is padded because vecs are zero indexed but are accounts start at 1
+        let expected_balances: Vec<u64> = vec![0, 90, 12, 39, 49, 59, 69, 11, 616, 17, 10];
+        // for members
+        for i in 1..11 {
+            let is_a_member = i < 7;
+            if is_a_member {
+                expected_members.push(i);
+                // for now, configure same share profile for all members
+                let share_profile = ShareProfile {
+                    reserved_shares: 0u32.into(),
+                    total_shares: 10,
+                };
+                // check if the member share profile matches previously expressed expectations
+                assert_eq!(share_profile, Protoshine::membership_shares(&i).unwrap());
+            } else {
+                expected_non_members.push(i);
+            }
+            let t = i as usize;
+            assert_eq!(
+                &Balances::free_balance(i),
+                expected_balances.get(t).unwrap()
+            );
         }
         assert_eq!(expected_members, Protoshine::members());
-        let default_bank = Protoshine::bank_account().joint_account.inner().unwrap();
-
-        assert_eq!(484, Balances::free_balance(&default_bank));
+        for j in expected_non_members {
+            assert!(!Protoshine::is_member(&j));
+        }
+        let default_bank = Protoshine::bank_account();
+        assert_eq!(60, Protoshine::bank_balance(default_bank).unwrap());
     });
 }
 
 #[test]
 fn membership_check_works() {
     new_test_ext().execute_with(|| {
-        for i in 1..9 {
+        for i in 1..7 {
             assert!(Protoshine::is_member(&i));
         }
         assert!(!Protoshine::is_member(&0));
-        for j in 10..20 {
+        for j in 7..20 {
             assert!(!Protoshine::is_member(&j));
         }
     });
 }
 
-// make a genesis config for the bank
+// #[test]
+// fn membership_application_works() {
+//     new_test_ext(|| {
+
+//     });
+// }
+
+// #[test]
+// fn bond_calculations() {
+//     new_test_ext().execute_with(|| {
+
+//     });
+// }
+
+// #[test]
+// fn poor_cant_afford_membership_application() {
+//     // I name this test intentionally because *crowdfunding* applications that can't afford bonds
+//     // is a necessary TODO (the current iteration is classist until this is changed)
+//     new_test_ext().execute_with(|| {
+//         // apply without enough capital to pay bond
+
+//         // apply
+
+//         // ask them to
+//     })
+// }
 
 // #[test]
 // fn membership_app_panics_as_expected() {
