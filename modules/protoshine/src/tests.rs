@@ -2,7 +2,7 @@
 use super::*;
 use mock::*;
 
-use frame_support::{assert_noop, assert_ok};
+use frame_support::{assert_noop, assert_ok, assert_err};
 
 fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::default()
@@ -19,7 +19,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
             (5, 69),
             (6, 79),
             // non-members
-            (7, 11),
+            (7, 1),
             (8, 616),
             (9, 17),
             (10, 10),
@@ -51,7 +51,7 @@ fn genesis_config_works() {
         let mut expected_members: Vec<u64> = Vec::new();
         let mut expected_non_members: Vec<u64> = Vec::new();
         // the first element is padded because vecs are zero indexed but are accounts start at 1
-        let expected_balances: Vec<u64> = vec![0, 90, 12, 39, 49, 59, 69, 11, 616, 17, 10];
+        let expected_balances: Vec<u64> = vec![0, 90, 12, 39, 49, 59, 69, 1, 616, 17, 10];
         // for members
         for i in 1..11 {
             let is_a_member = i < 7;
@@ -95,35 +95,82 @@ fn membership_check_works() {
     });
 }
 
-// #[test]
-// fn membership_application_works() {
-//     new_test_ext(|| {
 
-//     });
-// }
+#[test]
+fn membership_application_enforces_panics() {
+    new_test_ext().execute_with(|| {
+        let seven = Origin::signed(7);
+        // no freebies for membership applications, adding `enforced-criteria` is an upcoming feature
+        assert_err!(Protoshine::membership_application(seven.clone(), 0, 5), Error::<Test>::InvalidMembershipApplication);
+        assert_err!(Protoshine::membership_application(seven.clone(), 1, 5), Error::<Test>::InvalidMembershipApplication);
+        assert_err!(Protoshine::membership_application(seven, 5, 5), Error::<Test>::InsufficientMembershipApplicantCollateral);
+    });
+}
+
+#[test]
+fn poor_cant_afford_membership_application() {
+    // I name this test intentionally because *crowdfunding* applications that can't afford bonds is coming soon :)
+    new_test_ext().execute_with(|| {
+        let seven = Origin::signed(7);
+        // no freebies for membership applications, adding `enforced-criteria` is an upcoming feature
+        assert_err!(Protoshine::membership_application(seven.clone(), 2, 10), Error::<Test>::InsufficientMembershipApplicantCollateral);
+    });
+}
+
+#[test]
+fn membership_application_works() {
+    new_test_ext().execute_with(|| {
+        System::set_block_number(8);
+        let eight = Origin::signed(8);
+        assert_ok!(Protoshine::membership_application(eight.clone(), 10, 10));
+
+        // check the storage item
+        assert_eq!(Protoshine::membership_application_count(), 1);
+        let expected_membership_app = MembershipProposal {
+            index: 1,
+            who: 8,
+            stake_promised: 10,
+            shares_requested: 10,
+            stage: ProposalStage::Application,
+            time_proposed: 8,
+        };
+        assert_eq!(Protoshine::membership_applications(1).unwrap(), expected_membership_app);
+    });
+}
+
+#[test]
+fn application_bond_works() {
+    new_test_ext().execute_with(|| {
+        System::set_block_number(8);
+        let eight = Origin::signed(8);
+        let bank_account = Protoshine::bank_account();
+        assert_eq!(Protoshine::collateralization_ratio(bank_account).unwrap(), Permill::one());
+
+        let _ = Protoshine::membership_application(eight.clone(), 10, 10);
+
+        // ratio == collateral_ratio
+        // => bond = 2 * MembershipProposalBond constant = 2 * 1 = 2
+        // 616 - 2 = 614
+        assert_eq!(Balances::free_balance(&8), 614);
+
+        let _ = Protoshine::membership_application(eight.clone(), 11, 10);
+
+        // ratio < collateral_ratio
+        // => bond =  MembershipProposalBond constant
+        // 614 - 1 = 613
+        // assert_eq!(Balances::free_balance(&8), 613);
+
+        // let _ = Protoshine::membership_application(eight, 5, 10);
+
+        // // ratio > banks_collateral_ratio
+        // // => bond = 4 * MembershipProposalBond constant = 4 * 1 = 4
+        // // 613 - 4 = 608
+        // assert_eq!(Balances::free_balance(&8), 608);
+    });
+}
 
 // #[test]
 // fn bond_calculations() {
-//     new_test_ext().execute_with(|| {
-
-//     });
-// }
-
-// #[test]
-// fn poor_cant_afford_membership_application() {
-//     // I name this test intentionally because *crowdfunding* applications that can't afford bonds
-//     // is a necessary TODO (the current iteration is classist until this is changed)
-//     new_test_ext().execute_with(|| {
-//         // apply without enough capital to pay bond
-
-//         // apply
-
-//         // ask them to
-//     })
-// }
-
-// #[test]
-// fn membership_app_panics_as_expected() {
 //     new_test_ext().execute_with(|| {
 
 //     });

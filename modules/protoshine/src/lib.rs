@@ -251,12 +251,9 @@ decl_module! {
             shares_requested: Shares,
         ) -> DispatchResult {
             let applicant = ensure_signed(origin)?;
-            // Enforced membership criteria
-            // - strict requirements for membership applications
-            let shares_as_balance = BalanceOf::<T>::from(shares_requested);
+            // membership criteria (see #27)
             ensure!(
-                stake_promised > T::Currency::minimum_balance() &&
-                stake_promised > shares_as_balance,
+                stake_promised > T::Currency::minimum_balance(),
                 Error::<T>::InvalidMembershipApplication,
             );
 
@@ -576,7 +573,7 @@ impl<T: Trait> Module<T> {
         // compare ratio and multiply proposal bond (much room for improvement here)
         match (banks_ratio, ratio) {
             // minimum bond amount because improves share value if accepted
-            (banks_ratio, ratio) if ratio > banks_ratio => Ok(T::MembershipProposalBond::get()),
+            (banks_ratio, ratio) if ratio < banks_ratio => Ok(T::MembershipProposalBond::get()),
             // standard bond amount because no changes to share value if accepted
             (banks_ratio, ratio) if ratio == banks_ratio => {
                 Ok(T::MembershipProposalBond::get() * 2.into())
@@ -604,7 +601,7 @@ impl<T: Trait> Module<T> {
         // compare ratio and multiply proposal bond (much room for improvement here)
         match (banks_ratio, ratio) {
             // minimum bond amount because improves share value if accepted
-            (banks_ratio, ratio) if ratio > banks_ratio => Ok(T::MembershipSponsorBond::get()),
+            (banks_ratio, ratio) if ratio < banks_ratio => Ok(T::MembershipSponsorBond::get()),
             // standard bond amount because no changes to share value if accepted
             (banks_ratio, ratio) if ratio == banks_ratio => {
                 Ok(T::MembershipSponsorBond::get() * 2u32)

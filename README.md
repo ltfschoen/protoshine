@@ -57,8 +57,75 @@ GenesisConfig::<Test> {
 
 The organization is initialized with 6 new members. Each member commits 10 `Currency`. I wanted to keep it simple so I just set it so that every member exchanges 10 `Currency` for 10 shares at initialization. This means that every member is also initialized as part of the organization with 10 `Share`s worth of voting power.
 
-* **APPLY**
+Next, we will discuss each runtime method and isolate each necessary step in the method body's logic. There are a few types of runtime methods. A taxonomy based on access permissions would distinguish between methods available for non-members and methods that can only be called by members of the organization.
 
-* **SPONSOR**
+*non-member actions*
+* [apply](#apply)
 
-* **VOTE**
+*member actions only*
+* [sponsor](#sponsor)
+* [vote](#vote)
+* [leave](#leave)
+
+> if curious about patterns for adding permissions, check out the [recipe](https://substrate.dev/recipes/declarative/permissioned.html)
+
+### apply
+
+The method header reveals the inputs.
+
+```rust
+fn membership_application(
+    origin,
+    stake_promised: BalanceOf<T>,
+    shares_requested: Shares,
+) -> DispatchResult
+```
+
+The basic structure resembles a request to transfer `stake_promised` amount of capital in denomination of `BalanceOf<T>` in exchange for issuance of `shares_requested` amount of `Shares`, which serve as the internal *unit of account* for use within the organization.
+
+1. a few checks are done to filter unrealistic membership applications
+
+```rust
+let shares_as_balance = BalanceOf::<T>::from(shares_requested);
+ensure!(
+    stake_promised > T::Currency::minimum_balance(),
+    Error::<T>::InvalidMembershipApplication,
+);
+```
+
+2. the application bond is calculated inside another runtime method; it's inputs include the parameters with which the applicant called the method
+
+```rust
+let collateral = Self::calculate_member_application_bond(
+    stake_promised,
+    shares_requested,
+)?;
+```
+
+3. the application bond is reserved from the applicant
+
+```rust
+T::Currency::reserve(&applicant, collateral)
+.map_err(|_| Error::<T>::InsufficientMembershipApplicantCollateral)?;
+```
+
+> TODO: when is this bond unbonded? needs to be some sort of obligation that is defacto dropped when the application is handled `=>` LockIdentifier might want to be used instead
+
+4. The membership application is added to the `MembershipApplications` storage item
+
+```rust
+<MembershipApplications<T>>::insert(c, membership_app);
+```
+
+For context, all storage items are in the `decl_storage` block,
+
+```rust
+pub MembershipApplications get(fn membership_applications):
+map ProposalIndex => Option<MembershipProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>>;
+```
+
+### sponsor
+
+### vote 
+
+### leave
