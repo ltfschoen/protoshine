@@ -15,16 +15,13 @@ use signal::ShareBank;
 mod vote;
 use vote::{Approved, MembershipVotingState, Vote, VoteThreshold};
 
-mod collateral;
-use collateral::{BondHelper, ShareParity};
-
 use codec::{Decode, Encode};
 use frame_support::traits::{Currency, ExistenceRequirement, Get, ReservableCurrency};
 use frame_support::{decl_error, decl_event, decl_module, decl_storage, ensure};
 use frame_system::{self as system, ensure_signed};
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_runtime::traits::{AccountIdConversion, Saturating};
+use sp_runtime::traits::AccountIdConversion; // Saturating
 use sp_runtime::{DispatchResult, Permill, RuntimeDebug};
 use sp_std::prelude::*;
 
@@ -148,6 +145,12 @@ decl_error! {
         NoMembershipShareInfo,
         /// There is no owner of the bank
         NoBankOwner,
+        /// Paths that are unlikely
+        /// - delete all of these and resolve paths before use
+        UnlikelyPathToBeDealtWith,
+        /// Enforcement of membership criteria standards
+        /// i.e. requesting more shares than capital committed
+        MembershipApplicationIsRidiculous,
     }
 }
 
@@ -261,10 +264,8 @@ decl_module! {
                 Error::<T>::InvalidMembershipApplication,
             );
 
-            let collateral = Self::calculate_member_application_bond(
-                stake_promised,
-                shares_requested,
-            )?;
+            // uniform bond until full functionality (see ../collateral for details on future impl)
+            let collateral = T::MembershipProposalBond::get();
             T::Currency::reserve(&applicant, collateral)
                 .map_err(|_| Error::<T>::InsufficientMembershipApplicantCollateral)?;
             let c = Self::membership_application_count() + 1;
@@ -306,11 +307,7 @@ decl_module! {
             let membership_proposal = wrapped_membership_proposal.expect("just checked above; qed");
             ensure!(membership_proposal.stage == ProposalStage::Application, Error::<T>::RequestInWrongStage);
 
-            // (2) should be calculated by UI ahead of time and calculated, but
-            // this structure fosters dynamic collateral pricing
-            let sponsor_bond = Self::calculate_membership_sponsor_bond(
-                membership_proposal.stake_promised, membership_proposal.shares_requested
-            )?;
+            let sponsor_bond = T::MembershipSponsorBond::get();
 
             // (3) check if the sponsor has enough to afford the sponsor bond by using `ShareProfile`
             let sponsor_share_profile = <MembershipShares<T>>::get(&sponsor).expect("invariant i: all members must have some shares and therefore some item in the shares map");
@@ -559,120 +556,11 @@ impl<T: Trait> Module<T> {
         <Members<T>>::get().contains(who)
     }
 
-    /// The required application bond for membership
-    /// TODO: change logic herein to calculate bond based on ratio of `stake_promised` to
-    /// `shares_requested` relative to existing parameterization
-    fn calculate_member_application_bond(
-        stake_promised: BalanceOf<T>,
-        shares_requested: Shares,
-    ) -> Result<BalanceOf<T>, Error<T>> {
-        // get proposed membership ratio
-        let ratio: Permill = Self::shares_to_capital_ratio(shares_requested, stake_promised);
-
-        // call the bank
-        let bank = Self::bank_account();
-        // check the bank's ratio (TODO: allow banks to embed their criteria)
-        let banks_ratio: Permill = Self::collateralization_ratio(bank)?;
-
-        // compare ratio and multiply proposal bond (much room for improvement here)
-        match (banks_ratio, ratio) {
-            // minimum bond amount because improves share value if accepted
-            (banks_ratio, ratio) if ratio < banks_ratio => Ok(T::MembershipProposalBond::get()),
-            // standard bond amount because no changes to share value if accepted
-            (banks_ratio, ratio) if ratio == banks_ratio => {
-                Ok(T::MembershipProposalBond::get() * 2.into())
-            }
-            // dilutive proposal because decreases share value if accepted
-            _ => Ok(T::MembershipProposalBond::get() * 4.into()),
-        }
-    }
-
-    /// The required sponsorship bond for membership proposals
-    /// TODO: abstract method body into an outside method called in both of these methods
-    /// - make an issue
-    fn calculate_membership_sponsor_bond(
-        stake_promised: BalanceOf<T>,
-        shares_requested: Shares,
-    ) -> Result<Shares, Error<T>> {
-        // get proposed membership ratio
-        let ratio: Permill = Self::shares_to_capital_ratio(shares_requested, stake_promised);
-
-        // call the bank
-        let bank = Self::bank_account();
-        // check the bank's ratio (TODO: allow banks to embed their criteria)
-        let banks_ratio: Permill = Self::collateralization_ratio(bank)?;
-
-        // compare ratio and multiply proposal bond (much room for improvement here)
-        match (banks_ratio, ratio) {
-            // minimum bond amount because improves share value if accepted
-            (banks_ratio, ratio) if ratio < banks_ratio => Ok(T::MembershipSponsorBond::get()),
-            // standard bond amount because no changes to share value if accepted
-            (banks_ratio, ratio) if ratio == banks_ratio => {
-                Ok(T::MembershipSponsorBond::get() * 2u32)
-            }
-            // dilutive proposal because decreases share value if accepted
-            _ => Ok(T::MembershipSponsorBond::get() * 4u32),
-        }
-    }
-
     // -- MAKE BELOW METHODS SPECIFIC TO SOME TRAIT
     // `impl BANKACCOUNT<T::ACCOUNTID> for Module<T>` --
     pub fn account_id() -> T::AccountId {
         //  TODO: in the multi-org version, the `ModuleId` is passed in and
         // this still returns `T::AccountId`
         BANK_ID.into_account()
-    }
-
-    /// Return the amount in the bank (in T::Currency denomination)
-    fn bank_balance(bank: Bank<T::AccountId>) -> Result<BalanceOf<T>, Error<T>> {
-        let account = bank.joint_account.inner().ok_or(Error::<T>::NoBankOwner)?;
-        let balance = T::Currency::free_balance(&account)
-            // TODO: ponder whether this should be here (not if I don't follow the same existential
-            // deposit system as polkadot...)
-            // Must never be less than 0 but better be safe.
-            .saturating_sub(T::Currency::minimum_balance());
-        Ok(balance)
-    }
-
-    /// Calculate the shares to capital ratio
-    /// TODO: is this type conversion safe?
-    /// ...I just want to use `Permill::from_rational_approximation` which requires inputs two of
-    /// the same type
-    pub fn shares_to_capital_ratio(shares: Shares, capital: BalanceOf<T>) -> Permill {
-        let shares_as_balance = BalanceOf::<T>::from(shares);
-        Permill::from_rational_approximation(shares_as_balance, capital)
-    }
-
-    /// Ratio of the `bank.balance` to `bank.shares`
-    /// - this value may be interpreted as `currency_per_share` by UIs, but that would assume
-    /// immediate liquidity which is false
-    fn collateralization_ratio(bank: Bank<T::AccountId>) -> Result<Permill, Error<T>> {
-        let most_recent_balance = Self::bank_balance(bank.clone())?;
-        Ok(Self::shares_to_capital_ratio(
-            bank.shares,
-            most_recent_balance,
-        ))
-    }
-}
-
-impl<T: Trait> BondHelper for Module<T> {
-    type Shares = Shares;
-    type Capital = BalanceOf<T>;
-
-    fn share_parity_calculator(shares: Shares, capital: BalanceOf<T>) -> ShareParity {
-        let shares_as_balance = BalanceOf::<T>::from(shares);
-        match (shares_as_balance, capital) {
-            (a, b) if a > b => {
-                let permill_approximate =
-                    Permill::from_rational_approximation(capital, shares_as_balance);
-                ShareParity::CapitalOverShare(permill_approximate)
-            }
-            (a, b) if a < b => {
-                let permill_approximate =
-                    Permill::from_rational_approximation(shares_as_balance, capital);
-                ShareParity::ShareOverCapital(permill_approximate)
-            }
-            _ => ShareParity::Equal,
-        }
     }
 }

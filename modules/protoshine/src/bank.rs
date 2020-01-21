@@ -36,15 +36,17 @@ pub enum Owner<AccountId> {
     Owned(AccountId),
 }
 
-impl<AccountId> Owner<AccountId> {
-    pub(crate) fn inner(self) -> Option<AccountId> {
-        if let Owner::Owned(account) = self {
-            Some(account)
-        } else {
-            None
-        }
-    }
-}
+// useful for getting the bank_balance when you need to calculate the bank's collateralization ratio
+// - see ../collateral
+// impl<AccountId> Owner<AccountId> {
+//     pub(crate) fn inner(self) -> Option<AccountId> {
+//         if let Owner::Owned(account) = self {
+//             Some(account)
+//         } else {
+//             None
+//         }
+//     }
+// }
 
 /// Bank Object
 /// relevant when

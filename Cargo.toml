@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "modules/protoshine",
+    "modules/collateral",
     "modules/signal",
 ]

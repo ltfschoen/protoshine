@@ -58,7 +58,7 @@ impl pallet_balances::Trait for Test {
     type CreationFee = CreationFee;
 }
 parameter_types! {
-    pub const MembershipProposalBond: u64 = 1;
+    pub const MembershipProposalBond: u64 = 2;
     pub const MembershipSponsorBond: u32 = 3;
     pub const MembershipVoteBond: u32 = 1;
     pub const MaximumShareIssuance: Permill = Permill::from_percent(50);
@@ -79,3 +79,49 @@ impl Trait for Test {
 pub type System = frame_system::Module<Test>;
 pub type Balances = pallet_balances::Module<Test>;
 pub type Protoshine = Module<Test>;
+
+// useful for getting the bank_balance when you need to calculate the bank's collateralization ratio
+// - see ../collateral
+impl<AccountId> Owner<AccountId> {
+    pub(crate) fn inner(self) -> Option<AccountId> {
+        if let Owner::Owned(account) = self {
+            Some(account)
+        } else {
+            None
+        }
+    }
+}
+
+use sp_runtime::traits::Saturating;
+impl<T: Trait> Module<T> {
+    /// Return the amount in the bank (in T::Currency denomination)
+    pub fn bank_balance(bank: Bank<T::AccountId>) -> Result<BalanceOf<T>, Error<T>> {
+        let account = bank.joint_account.inner().ok_or(Error::<T>::NoBankOwner)?;
+        let balance = T::Currency::free_balance(&account)
+            // TODO: ponder whether this should be here (not if I don't follow the same existential
+            // deposit system as polkadot...)
+            // Must never be less than 0 but better be safe.
+            .saturating_sub(T::Currency::minimum_balance());
+        Ok(balance)
+    }
+
+    /// Calculate the shares to capital ratio
+    /// TODO: is this type conversion safe?
+    /// ...I just want to use `Permill::from_rational_approximation` which requires inputs two of
+    /// the same type
+    pub fn shares_to_capital_ratio(shares: Shares, capital: BalanceOf<T>) -> Permill {
+        let shares_as_balance = BalanceOf::<T>::from(shares);
+        Permill::from_rational_approximation(shares_as_balance, capital)
+    }
+
+    /// Ratio of the `bank.balance` to `bank.shares`
+    /// - this value may be interpreted as `currency_per_share` by UIs, but that would assume
+    /// immediate liquidity which is false
+    pub fn collateralization_ratio(bank: Bank<T::AccountId>) -> Result<Permill, Error<T>> {
+        let most_recent_balance = Self::bank_balance(bank.clone())?;
+        Ok(Self::shares_to_capital_ratio(
+            bank.shares,
+            most_recent_balance,
+        ))
+    }
+}
